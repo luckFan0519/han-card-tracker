@@ -1,6 +1,5 @@
 # Han 记牌器
 基于YOLO深度学习的智能斗地主记牌器，**自动识别游戏中的扑克牌并实时追踪剩余牌数量。**
-该程序当前阶段还缺少许多功能，**希望有人能加入一起完善！**
 ## 主界面
 ![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220839.png?raw=true)
 ![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220932.png?raw=true)
@@ -229,10 +228,6 @@ A: 将 `other_YOLO_weights/` 目录中的模型文件复制到 `yolo/weights/bes
 ## 免责声明
 
 本工具仅供学习和娱乐使用，请勿用于任何商业用途或违反游戏服务条款的行为。使用本工具所产生的一切后果由使用者自行承担。
-
-## 联系方式
-
-- Email: jiangfan0519@qq.com
 
 ---
 
