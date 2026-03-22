@@ -1,7 +1,7 @@
 # Han 记牌器
 基于YOLO深度学习的智能斗地主记牌器，**自动识别游戏中的扑克牌并实时追踪剩余牌数量。**
 ## 主界面
-![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220839.png?raw=true)
+![](https://github.com/luckFan0519/ddz_cards_tracker/blob/han_card_traker_v1.1/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220839.png?raw=true)
 ![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220932.png?raw=true)
 
 ![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220911.png?raw=true)
