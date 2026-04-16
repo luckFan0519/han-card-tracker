@@ -27,7 +27,6 @@ def main():
     except Exception:
         pass
 
-
     app = QApplication(sys.argv)
 
     # 设置一个明确的应用程序字体，避免 Qt 在内部使用无效的 pointSize (-1)

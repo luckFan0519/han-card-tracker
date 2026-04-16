@@ -250,7 +250,7 @@ class PreviewDialog(QDialog):
 
 
 class LayoutEditorDialog(QDialog):
-    def __init__(self, parent=None, initial_layout_name: Optional[str] = None):
+    def __init__(self, parent=None, initial_layout_name: Optional[str] = None, on_restore_topmost=None):
         super().__init__(parent)
         self.setWindowFlag(Qt.WindowMinMaxButtonsHint, True)
         self.setWindowTitle("可视化布局编辑")
@@ -261,6 +261,7 @@ class LayoutEditorDialog(QDialog):
         self._captured_image = None
         self._lowered_windows = []
         self._windows_pushed_back = False
+        self._on_restore_topmost = on_restore_topmost
 
         root = QVBoxLayout(self)
 
@@ -467,13 +468,21 @@ class LayoutEditorDialog(QDialog):
             QMessageBox.warning(self, "提示", "请先选择窗口标题")
             return
 
-        if self.chk_auto_lower.isChecked():
+        auto_lower = self.chk_auto_lower.isChecked()
+        if auto_lower:
             self._send_app_windows_to_bottom()
         try:
             image = capture_window_by_title(window_title)
         finally:
-            if self.chk_auto_lower.isChecked():
+            if auto_lower:
                 self._restore_app_windows_after_capture()
+                # 仅在自动下沉场景下兜底恢复置顶，避免影响普通截图流程。
+                try:
+                    from config.settings import ALWAYS_ON_TOP
+                    if ALWAYS_ON_TOP and callable(self._on_restore_topmost):
+                        self._on_restore_topmost()
+                except Exception:
+                    pass
 
         if image is None:
             QMessageBox.warning(self, "提示", "截图失败，请确认窗口可见且标题正确")

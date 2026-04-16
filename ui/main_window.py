@@ -334,7 +334,11 @@ class CardUI(QMainWindow):
 
     def on_layout_editor_clicked(self, settings_dialog):
         """打开可视化布局编辑器并刷新设置对话框中的布局列表。"""
-        editor = LayoutEditorDialog(self, initial_layout_name=self.layout_name)
+        editor = LayoutEditorDialog(
+            self,
+            initial_layout_name=self.layout_name,
+            on_restore_topmost=lambda: self._reapply_topmost_if_enabled(settings_dialog),
+        )
         if editor.exec() != editor.Accepted:
             return
 
@@ -793,6 +797,13 @@ class CardUI(QMainWindow):
         import config.settings as settings
         settings.ALWAYS_ON_TOP = always_on_top
 
+        self._apply_always_on_top_state(always_on_top)
+
+        print(f"[UI] 是否显示在最上层已更新为: {'是' if always_on_top else '否'}")
+
+    def _apply_always_on_top_state(self, always_on_top, settings_dialog=None):
+        """公共函数：统一应用主窗口与设置窗口的置顶状态。"""
+
         # 简化：直接切换 flag，然后确保 widgets 已连接并刷新界面
         try:
             self.setWindowFlag(Qt.WindowStaysOnTopHint, always_on_top)
@@ -813,6 +824,14 @@ class CardUI(QMainWindow):
         except Exception:
             pass
 
+        if settings_dialog is not None:
+            try:
+                settings_dialog.setWindowFlag(Qt.WindowStaysOnTopHint, always_on_top)
+                settings_dialog.show()
+                settings_dialog.raise_()
+            except Exception:
+                pass
+
         # 强制重绘
         try:
             self.central_widget.update()
@@ -822,7 +841,13 @@ class CardUI(QMainWindow):
             self.adjustSize()
         except Exception:
             pass
-        print(f"[UI] 是否显示在最上层已更新为: {'是' if always_on_top else '否'}")
+
+    def _reapply_topmost_if_enabled(self, settings_dialog):
+        """自动下沉截图后：若设置为置顶，则复用同一逻辑恢复置顶。"""
+        from config.settings import ALWAYS_ON_TOP
+
+        if ALWAYS_ON_TOP:
+            self._apply_always_on_top_state(True, settings_dialog=settings_dialog)
 
     def on_show_played_cards_changed(self, index):
         """
