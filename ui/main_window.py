@@ -16,6 +16,11 @@ from ui.settings_dialog import SettingsDialog
 import config.settings as settings
 
 
+INTERVAL_TEXT_OPTIONS = ["0.1秒", "0.15秒", "0.2秒", "0.25秒", "0.3秒", "0.35秒", "0.4秒", "0.45秒", "0.5秒"]
+RESET_TIME_OPTIONS = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
+FRAME_LENGTH_OPTIONS = [1, 2, 3, 4, 5, 6]
+
+
 class CardUI(QMainWindow):
     """
     两行记牌器主窗口：
@@ -235,10 +240,37 @@ class CardUI(QMainWindow):
         self.timer.timeout.connect(self.request_one_update) # 定义的 request_one_update 方法绑定。
         self.timer.start() # 启动
 
+        # 窗口交互（拖动/缩放）期间暂停检测，避免主线程重刷导致拖动卡顿
+        self._is_window_interacting = False
+        self._interaction_resume_delay_ms = 100
+        # 每次进入窗口交互都递增 token，用于丢弃交互前已发起但延迟返回的结果
+        self._interaction_token = 0
+        self._inflight_job_token = 0
+        self._interaction_resume_timer = QTimer(self)
+        self._interaction_resume_timer.setSingleShot(True)
+        self._interaction_resume_timer.setInterval(self._interaction_resume_delay_ms)
+        self._interaction_resume_timer.timeout.connect(self._on_window_interaction_settled)
+        self._is_settings_open = False
+
+        # UI 刷新缓存：仅在状态变化时更新文本/样式，减少主线程开销
+        self._last_count_values: dict[str, int] = {}
+        self._last_depleted_values: dict[str, bool] = {}
+        self._last_played_signature = None
+
     def on_settings_clicked(self):
         """
         点击设置按钮时打开设置对话框
         """
+        # 打开设置期间暂停检测，提升对话框交互流畅度
+        self._is_settings_open = True
+        self._interaction_token += 1  # 使在途结果过期
+        self._is_window_interacting = True
+        try:
+            if hasattr(self, 'timer') and self.timer.isActive():
+                self.timer.stop()
+        except Exception:
+            pass
+
         # 注意：不要把 on_always_on_top_change_callback 传给 dialog（避免在对话框打开时立即变更窗口 flags 导致显示问题）
         dialog = SettingsDialog(
             self,
@@ -281,15 +313,21 @@ class CardUI(QMainWindow):
         from config.settings import DEBUG_MODE
         dialog.set_current_debug_mode(DEBUG_MODE)
 
-        dialog.exec()
-        # 对于 "显示在最上层" 我们在对话框关闭后统一应用，避免在 modal dialog 打开时改变 window flags
         try:
-            always_index = dialog.combo_always_on_top.currentIndex()
-            # 如果用户选择了不同值，则调用处理函数
-            if always_index is not None:
-                self.on_always_on_top_changed(always_index)
-        except Exception:
-            pass
+            dialog.exec()
+            # 对于 "显示在最上层" 我们在对话框关闭后统一应用，避免在 modal dialog 打开时改变 window flags
+            try:
+                always_index = dialog.combo_always_on_top.currentIndex()
+                # 如果用户选择了不同值，则调用处理函数
+                if always_index is not None:
+                    self.on_always_on_top_changed(always_index)
+            except Exception:
+                pass
+        finally:
+            self._is_settings_open = False
+            self._is_window_interacting = False
+            self._touch_no_target_time()
+            self._start_timer_if_allowed()
 
     def on_pause_clicked(self):
         """
@@ -297,19 +335,17 @@ class CardUI(QMainWindow):
         """
         if self.is_paused:
             # 恢复检测
-            self.timer.start()
             self.btn_pause.setText("暂停")
             self.is_paused = False
+            self._start_timer_if_allowed()
 
             # 更新最后检测时间，避免因为暂停时间过长而立即重置
-            if hasattr(self, 'card_tracker'):
-                import time
-                self.card_tracker.no_target_time = time.time()
+            self._touch_no_target_time()
 
             print("检测已恢复")
         else:
             # 暂停检测
-            self.timer.stop()
+            self._stop_timer_if_exists()
             self.btn_pause.setText("恢复")
             self.is_paused = True
             print("检测已暂停")
@@ -320,6 +356,24 @@ class CardUI(QMainWindow):
         """
         pass
 
+    def _touch_no_target_time(self):
+        """刷新 no_target_time，避免暂停或交互后立即触发超时重置。"""
+        if hasattr(self, 'card_tracker'):
+            import time
+            self.card_tracker.no_target_time = time.time()
+
+    def _start_timer_if_allowed(self):
+        """仅在允许检测时启动定时器。"""
+        if (hasattr(self, 'timer')
+                and not self.is_paused
+                and not self._is_settings_open):
+            self.timer.start()
+
+    def _stop_timer_if_exists(self):
+        """安全停止定时器。"""
+        if hasattr(self, 'timer'):
+            self.timer.stop()
+
     @Slot()
     def request_one_update(self):
         """
@@ -329,8 +383,9 @@ class CardUI(QMainWindow):
           把调用投递到事件队列，让它在 worker 所在线程执行 do_run_once
         - 暂停状态下不触发检测
         """
-        if self._busy or self.is_paused:
+        if self._busy or self.is_paused or self._is_window_interacting or self._is_settings_open:
             return
+        self._inflight_job_token = self._interaction_token
         self._busy = True
 
         # 这里保持你的写法：singleShot(0, worker.do_run_once)
@@ -350,35 +405,86 @@ class CardUI(QMainWindow):
         - 现在改为设置 dynamicProperty(depleted) 并强制刷新样式
           这样 QSS 仍然可以做到同样效果，但样式集中在 style.qss
         """
-        for card in self.card_order:
-            v = remain_cards.get(card, 0)
+        # 交互期间或结果已过期时，直接丢弃在途结果，避免拖动开始瞬间卡顿
+        if self._is_window_interacting or self._inflight_job_token != self._interaction_token:
+            return
 
-            # 1) 更新数量文字
-            self.count_labels[card].setText(str(v)) # .setText(...)：修改标签内容
-
-
-
-            # 更新出牌
+        # 更新出牌文本（仅在内容变化时更新）
+        played_signature = (
+            tuple(tuple(x) if isinstance(x, list) else x for x in show_left),
+            tuple(tuple(x) if isinstance(x, list) else x for x in show_self),
+            tuple(tuple(x) if isinstance(x, list) else x for x in show_right),
+        )
+        if played_signature != self._last_played_signature:
             self.self_played_cards_label.setText("   本家     " + trans_yolo_names_to_string(show_self))
             self.left_played_cards_label.setText("   上家     " + trans_yolo_names_to_string(show_left))
             self.right_played_cards_label.setText("   下家     " + trans_yolo_names_to_string(show_right))
+            self._last_played_signature = played_signature
 
+        for card in self.card_order:
+            v = remain_cards.get(card, 0)
+            prev_v = self._last_count_values.get(card)
 
-            # 2) 设置 depleted 属性：True/False
+            # 1) 更新数量文字和 count 属性（仅在数量变化时）
+            if prev_v != v:
+                self.count_labels[card].setText(str(v)) # .setText(...)：修改标签内容
+                self.count_labels[card].setProperty("count", str(v))
+
+            # 2) 设置 depleted 属性：仅在状态变化时
             depleted = (v <= 0)
-            self.name_labels[card].setProperty("depleted", depleted)
-            self.count_labels[card].setProperty("depleted", depleted)
+            prev_depleted = self._last_depleted_values.get(card)
+            if prev_depleted != depleted:
+                self.name_labels[card].setProperty("depleted", depleted)
+                self.count_labels[card].setProperty("depleted", depleted)
 
-            # 3) 设置 count 属性，用于QSS样式控制（当数量等于4时显示红色）
-            self.count_labels[card].setProperty("count", str(v))
+            # 更新缓存
+            self._last_count_values[card] = v
+            self._last_depleted_values[card] = depleted
 
-            # 4) 强制刷新样式（Qt 对动态属性的 QSS，需要触发重新 polish）
-            #    不改变任何逻辑，只是让 QSS 能立即生效
-            self.name_labels[card].style().unpolish(self.name_labels[card])
-            self.name_labels[card].style().polish(self.name_labels[card])
+            # 3) 仅在属性变动时重刷样式，避免无效 unpolish/polish
+            if prev_v != v or prev_depleted != depleted:
+                self.name_labels[card].style().unpolish(self.name_labels[card])
+                self.name_labels[card].style().polish(self.name_labels[card])
 
-            self.count_labels[card].style().unpolish(self.count_labels[card])
-            self.count_labels[card].style().polish(self.count_labels[card])
+                self.count_labels[card].style().unpolish(self.count_labels[card])
+                self.count_labels[card].style().polish(self.count_labels[card])
+
+    def _mark_window_interaction(self):
+        """
+        标记窗口正在交互（拖动/缩放），并延后恢复检测。
+        连续收到事件时会不断重置恢复计时器，直到窗口稳定。
+        """
+        if not self._is_window_interacting:
+            self._interaction_token += 1
+        self._is_window_interacting = True
+        try:
+            if hasattr(self, 'timer') and self.timer.isActive():
+                self.timer.stop()
+        except Exception:
+            pass
+        self._interaction_resume_timer.start(self._interaction_resume_delay_ms)
+
+    @Slot()
+    def _on_window_interaction_settled(self):
+        """窗口稳定后恢复检测（手动暂停时不恢复）。"""
+        self._is_window_interacting = False
+        self._touch_no_target_time()
+        self._start_timer_if_allowed()
+
+    def moveEvent(self, event):
+        # 拖动窗口时先暂停检测，待位置稳定后再恢复
+        self._mark_window_interaction()
+        super().moveEvent(event)
+
+    def resizeEvent(self, event):
+        # 调整窗口大小时同样暂停检测，避免频繁重绘引发卡顿
+        self._mark_window_interaction()
+        super().resizeEvent(event)
+
+    def mousePressEvent(self, event):
+        # 鼠标按下时提前进入交互态，可更早停检
+        self._mark_window_interaction()
+        super().mousePressEvent(event)
 
 
     def _reset_ui_to_total(self):
@@ -404,6 +510,12 @@ class CardUI(QMainWindow):
 
             self.count_labels[card].style().unpolish(self.count_labels[card])
             self.count_labels[card].style().polish(self.count_labels[card])
+
+            # 重置缓存，确保下一帧增量更新一致
+            self._last_count_values[card] = v
+            self._last_depleted_values[card] = False
+
+        self._last_played_signature = None
 
     def _ensure_widgets_attached(self):
         """
@@ -483,7 +595,7 @@ class CardUI(QMainWindow):
         点击"重置"按钮（强制操作，不受 busy 影响）
         """
         # 1) 强制停止定时器，阻断后续识别
-        self.timer.stop()
+        self._stop_timer_if_exists()
 
         # 2) 强制解锁 busy（即使当前在识别，也当它结束了）
         self._busy = False
@@ -495,15 +607,14 @@ class CardUI(QMainWindow):
         QTimer.singleShot(0, self.worker.reset)
 
         # 5) 重新启动定时器（只有在非暂停状态下才启动）
-        if not self.is_paused:
-            self.timer.start()
+        self._start_timer_if_allowed()
 
     def on_interval_changed(self, index):
         """
         时间调整下拉框变化时调用
         """
         # 从设置对话框获取当前选择的间隔时间
-        interval_text = ["0.1秒", "0.15秒", "0.2秒", "0.25秒", "0.3秒", "0.35秒", "0.4秒", "0.45秒", "0.5秒"][index]
+        interval_text = INTERVAL_TEXT_OPTIONS[index]
         interval_sec = float(interval_text.replace("秒", ""))
         self.detect_interval_sec = interval_sec
 
@@ -512,10 +623,9 @@ class CardUI(QMainWindow):
         save_detect_interval(interval_sec)
 
         # 停止并重新启动定时器，应用新的时间间隔（只有在非暂停状态下才启动）
-        self.timer.stop()
+        self._stop_timer_if_exists()
         self.timer.setInterval(int(self.detect_interval_sec * 1000))
-        if not self.is_paused:
-            self.timer.start()
+        self._start_timer_if_allowed()
 
         print(f"检测间隔已更新为: {interval_sec}秒")
 
@@ -566,8 +676,7 @@ class CardUI(QMainWindow):
         self.worker_thread.start()
 
         # 重启定时器（只有在非暂停状态下才启动）
-        if hasattr(self, 'timer') and not self.is_paused:
-            self.timer.start()
+        self._start_timer_if_allowed()
 
         print(f"布局配置已更新为: {selected_layout}")
 
@@ -598,8 +707,7 @@ class CardUI(QMainWindow):
         重置时间改变时调用
         """
         # 从设置对话框获取当前选择的重置时间
-        reset_time_list = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-        reset_time = reset_time_list[index]
+        reset_time = RESET_TIME_OPTIONS[index]
 
         # 保存重置时间到config.yaml文件
         from config.settings import save_reset_time
@@ -616,8 +724,7 @@ class CardUI(QMainWindow):
         帧长度改变时调用
         """
         # 从设置对话框获取当前选择的帧长度
-        frame_length_list = [1, 2, 3, 4, 5, 6]
-        frame_length = frame_length_list[index]
+        frame_length = FRAME_LENGTH_OPTIONS[index]
 
         # 保存帧长度到config.yaml文件
         from config.settings import save_frame_length
@@ -790,6 +897,10 @@ class CardUI(QMainWindow):
         - 退出线程并等待（最多 1500ms）
         """
         self.timer.stop()
+        try:
+            self._interaction_resume_timer.stop()
+        except Exception:
+            pass
         self.worker_thread.quit()
         self.worker_thread.wait(1500)
         super().closeEvent(event)

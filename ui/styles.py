@@ -6,7 +6,16 @@
 """
 
 import os
+
 from PySide6.QtWidgets import QApplication
+
+
+def _resolve_qss_path(qss_path: str) -> str:
+    """将相对路径转换为基于当前文件目录的绝对路径。"""
+    if os.path.isabs(qss_path):
+        return qss_path
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, qss_path)
 
 
 def load_qss(app: QApplication, qss_path: str) -> None:
@@ -21,10 +30,7 @@ def load_qss(app: QApplication, qss_path: str) -> None:
     - app: QApplication 实例
     - qss_path: QSS 文件路径（例如 ./style.qss）
     """
-    # 为了更稳：兼容相对路径（以当前 ui.py 所在目录为基准）
-    if not os.path.isabs(qss_path):
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        qss_path = os.path.join(base_dir, qss_path)
+    qss_path = _resolve_qss_path(qss_path)
 
     # 文件不存在时不报错，避免影响主程序运行（只提示）
     if not os.path.exists(qss_path):

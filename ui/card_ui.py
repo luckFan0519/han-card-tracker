@@ -9,25 +9,24 @@ UI 入口：斗地主记牌器（两行：牌名 + 剩余数量）
 """
 
 import sys
+
 from PySide6.QtWidgets import QApplication
+
+from config.settings import BASE_DIR
 from ui.main_window import CardUI
 from ui.styles import load_qss
-from config.settings import BASE_DIR
+
+QSS_PATH = BASE_DIR + "\\ui\\ui.qss"
 
 
 def main():
-    """
-    主函数：启动应用程序
-    """
+    """兼容入口：启动 UI。"""
     app = QApplication(sys.argv)
-    dir_path = BASE_DIR + "\\ui\\ui.qss"
-    # print(dir_path)
-    load_qss(app, dir_path) # 先注释, 默认的更好看, 以后美化
+    load_qss(app, QSS_PATH)
 
     w = CardUI()
     w.show()
     sys.exit(app.exec())
 
-#
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()

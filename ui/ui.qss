@@ -9,50 +9,12 @@
      QLabel#CardNameLabel[depleted="true"] { ... }
 */
 
-/* -----------------------------
-   全局默认：让字体更统一一点
-   ----------------------------- */
+/* 全局默认：统一基础字体 */
 QWidget {
     font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC";
     font-size: 14px;
 }
 
-/* -----------------------------
-   牌名：默认样式
-   ----------------------------- */
-QLabel#CardNameLabel {
-    font-size: 14px;
-    font-weight: 600;
-    color: #111;
-}
-
-/* depleted：牌名变灰（对应你原来 v<=0 的 setStyleSheet）
-   你原样式 color:#999; 这里完全照做 */
-QLabel#CardNameLabel[depleted="true"] {
-    font-size: 14px;
-    font-weight: 600;
-    color: #999;
-}
-
-/* -----------------------------
-   数量：默认样式
-   ----------------------------- */
-QLabel#CardCountLabel {
-    font-size: 14px;
-    padding: 1px 4px;
-    border-radius: 6px;
-    background: #f4f4f4;
-    color: #111;
-}
-
-/* depleted：数量变灰（对应你原来 v<=0 的 setStyleSheet） */
-QLabel#CardCountLabel[depleted="true"] {
-    font-size: 14px;
-    padding: 1px 4px;
-    border-radius: 6px;
-    background: #f4f4f4;
-    color: #999;
-}
 
 /* 牌名：默认样式（无边框） */
 QLabel#CardNameLabel {
