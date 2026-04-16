@@ -337,6 +337,112 @@ def save_current_layout(layout_name):
         print(f"保存当前布局失败: {e}")
 
 
+def save_window_layout(layout_name, window_title, layout_dict, set_current=True):
+    """
+    保存/更新单个窗口布局到 config.yaml。
+
+    参数:
+    - layout_name: 布局名称
+    - window_title: 目标窗口标题
+    - layout_dict: 五个区域的归一化坐标字典
+    - set_current: 保存后是否切换为当前布局
+    """
+    global WINDOW_LAYOUTS, CURRENT_LAYOUT
+    try:
+        cfg = {}
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+        except Exception:
+            cfg = {}
+
+        window_layouts = cfg.get('window_layouts', {})
+        if not isinstance(window_layouts, dict):
+            window_layouts = {}
+
+        window_layouts[layout_name] = {
+            'window_title': str(window_title),
+            'layout': {
+                'player_hand': [float(x) for x in layout_dict['player_hand']],
+                'player_played': [float(x) for x in layout_dict['player_played']],
+                'opponent_left': [float(x) for x in layout_dict['opponent_left']],
+                'opponent_right': [float(x) for x in layout_dict['opponent_right']],
+                'landlord_cards': [float(x) for x in layout_dict['landlord_cards']],
+            }
+        }
+
+        cfg['window_layouts'] = window_layouts
+        if set_current:
+            cfg['current_layout'] = layout_name
+
+        tmp_path = CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, CONFIG_PATH)
+
+        WINDOW_LAYOUTS = window_layouts
+        if set_current:
+            CURRENT_LAYOUT = layout_name
+
+        print(f"布局已保存: {layout_name}")
+        if set_current:
+            print(f"当前布局已切换为: {layout_name}")
+    except Exception as e:
+        print(f"保存布局失败: {e}")
+
+
+def delete_window_layout(layout_name):
+    """
+    删除指定布局（至少保留一个布局），并在必要时更新 current_layout。
+
+    返回:
+    - 成功: 新的 current_layout 名称
+    - 失败: None
+    """
+    global WINDOW_LAYOUTS, CURRENT_LAYOUT
+    try:
+        cfg = {}
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+        except Exception:
+            cfg = {}
+
+        window_layouts = cfg.get('window_layouts', {})
+        if not isinstance(window_layouts, dict) or layout_name not in window_layouts:
+            print(f"删除布局失败: 未找到布局 {layout_name}")
+            return None
+
+        if len(window_layouts) <= 1:
+            print("删除布局失败: 至少需要保留一个布局")
+            return None
+
+        del window_layouts[layout_name]
+        cfg['window_layouts'] = window_layouts
+
+        current = cfg.get('current_layout')
+        if current == layout_name:
+            cfg['current_layout'] = next(iter(window_layouts.keys()))
+
+        tmp_path = CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, CONFIG_PATH)
+
+        WINDOW_LAYOUTS = window_layouts
+        CURRENT_LAYOUT = cfg.get('current_layout')
+
+        print(f"布局已删除: {layout_name}")
+        return CURRENT_LAYOUT
+    except Exception as e:
+        print(f"删除布局失败: {e}")
+        return None
+
+
 # ==================== 路径配置 ====================
 # 注意：BASE_DIR 和 YOLO_MODEL_PATH 已在文件开头定义
 

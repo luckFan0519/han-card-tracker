@@ -10,11 +10,67 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
+    QListView,
+    QMessageBox,
     QPushButton,
+    QStyleOptionViewItem,
+    QStyledItemDelegate,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
+from PySide6.QtCore import Qt, QRect
+from PySide6.QtGui import QColor, QPainter, QPen
+
+
+class LayoutItemDelegate(QStyledItemDelegate):
+    """在布局下拉项右侧绘制“删除”按钮。"""
+
+    def paint(self, painter, option, index):
+        # 先绘制文本区域，给右侧按钮留出空间
+        text_option = QStyleOptionViewItem(option)
+        text_option.rect = option.rect.adjusted(0, 0, -56, 0)
+        super().paint(painter, text_option, index)
+
+        btn_rect = self.get_delete_button_rect(option.rect)
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(QPen(QColor("#9e9e9e"), 1))
+        painter.setBrush(QColor("#f3f3f3"))
+        painter.drawRoundedRect(btn_rect, 4, 4)
+        painter.setPen(QColor("#333333"))
+        painter.drawText(btn_rect, Qt.AlignCenter, "删除")
+        painter.restore()
+
+    @staticmethod
+    def get_delete_button_rect(item_rect: QRect) -> QRect:
+        width = 44
+        height = 22
+        x = item_rect.right() - width - 8
+        y = item_rect.center().y() - height // 2
+        return QRect(x, y, width, height)
+
+
+class LayoutComboView(QListView):
+    """自定义下拉视图：点击“删除”按钮区域时触发布局删除。"""
+
+    def __init__(self, combo, delete_handler, parent=None):
+        super().__init__(parent)
+        self._combo = combo
+        self._delete_handler = delete_handler
+        self._delegate = LayoutItemDelegate(self)
+        self.setItemDelegate(self._delegate)
+
+    def mousePressEvent(self, event):
+        index = self.indexAt(event.position().toPoint())
+        if index.isValid():
+            item_rect = self.visualRect(index)
+            btn_rect = self._delegate.get_delete_button_rect(item_rect)
+            if btn_rect.contains(event.position().toPoint()):
+                layout_name = index.data(Qt.DisplayRole)
+                self._delete_handler(layout_name)
+                return
+        super().mousePressEvent(event)
 
 
 class SettingsDialog(QDialog):
@@ -39,6 +95,8 @@ class SettingsDialog(QDialog):
         on_always_on_top_change_callback=None,
         on_show_played_cards_change_callback=None,
         on_debug_mode_change_callback=None,
+        on_layout_editor_callback=None,
+        on_layout_delete_callback=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("设置")
@@ -53,6 +111,8 @@ class SettingsDialog(QDialog):
         self.on_always_on_top_change_callback = on_always_on_top_change_callback
         self.on_show_played_cards_change_callback = on_show_played_cards_change_callback
         self.on_debug_mode_change_callback = on_debug_mode_change_callback
+        self.on_layout_editor_callback = on_layout_editor_callback
+        self.on_layout_delete_callback = on_layout_delete_callback
 
         # 创建标签页控件
         self.tab_widget = QTabWidget(self)
@@ -141,6 +201,10 @@ class SettingsDialog(QDialog):
 
         self.combo_layout = QComboBox()
         self.combo_layout.setObjectName("LayoutCombo")
+        self.combo_layout.setMinimumWidth(300)
+        self.combo_layout.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_layout.setMinimumContentsLength(18)
+        self.combo_layout.setView(LayoutComboView(self.combo_layout, self._on_layout_delete_requested, self))
         from config.settings import WINDOW_LAYOUTS
 
         layout_names = list(WINDOW_LAYOUTS.keys())
@@ -148,11 +212,16 @@ class SettingsDialog(QDialog):
         self.combo_layout.currentIndexChanged.connect(self._on_layout_changed)
 
         layout_row = QHBoxLayout()
-        layout_label = QLabel("布局配置：")
+        layout_label = QLabel("布局配置管理：")
         layout_label.setMinimumWidth(self.LABEL_MIN_WIDTH)
         layout_row.addWidget(layout_label)
         layout_row.addWidget(self.combo_layout)
         layout_row.addStretch()
+
+        self.btn_layout_editor = QPushButton("可视化编辑")
+        self.btn_layout_editor.setObjectName("BtnLayoutEditor")
+        self.btn_layout_editor.clicked.connect(self._on_layout_editor_clicked)
+        layout_row.addWidget(self.btn_layout_editor)
         basic_layout.addLayout(layout_row)
 
         self.combo_device = self._add_combo_row(
@@ -306,6 +375,35 @@ class SettingsDialog(QDialog):
         """
         if self.on_debug_mode_change_callback:
             self.on_debug_mode_change_callback(index)
+
+    def _on_layout_editor_clicked(self):
+        """打开可视化布局编辑器。"""
+        if self.on_layout_editor_callback:
+            self.on_layout_editor_callback(self)
+
+    def _on_layout_delete_requested(self, layout_name: str):
+        """点击下拉项删除按钮时，弹确认框并触发布局删除回调。"""
+        confirm = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定删除布局“{layout_name}”吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        if self.on_layout_delete_callback:
+            self.on_layout_delete_callback(self, layout_name)
+
+    def refresh_layout_list(self, selected_name=None):
+        """刷新布局下拉列表并可选指定当前项。"""
+        from config.settings import WINDOW_LAYOUTS
+
+        names = list(WINDOW_LAYOUTS.keys())
+        self._set_combo_items(self.combo_layout, names, default_index=0)
+        if selected_name:
+            idx = self.combo_layout.findText(selected_name)
+            self._set_combo_current_safely(self.combo_layout, idx)
 
     def set_current_interval(self, interval_text):
         """

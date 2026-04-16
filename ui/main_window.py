@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from core.card_tracker import CardTracker, CardTrackerWorker
 from config.settings import TOTAL_CARDS
 from utils.trans_yolo_names_to_string import trans_yolo_names_to_string
+from ui.layout_editor_dialog import LayoutEditorDialog
 from ui.settings_dialog import SettingsDialog
 import config.settings as settings
 
@@ -282,7 +283,9 @@ class CardUI(QMainWindow):
             on_frame_length_change_callback=self.on_frame_length_changed,
             on_always_on_top_change_callback=None,
             on_show_played_cards_change_callback=self.on_show_played_cards_changed,
-            on_debug_mode_change_callback=self.on_debug_mode_changed
+            on_debug_mode_change_callback=self.on_debug_mode_changed,
+            on_layout_editor_callback=self.on_layout_editor_clicked,
+            on_layout_delete_callback=self.on_layout_delete_clicked,
         )
 
         # 设置当前值
@@ -328,6 +331,44 @@ class CardUI(QMainWindow):
             self._is_window_interacting = False
             self._touch_no_target_time()
             self._start_timer_if_allowed()
+
+    def on_layout_editor_clicked(self, settings_dialog):
+        """打开可视化布局编辑器并刷新设置对话框中的布局列表。"""
+        editor = LayoutEditorDialog(self, initial_layout_name=self.layout_name)
+        if editor.exec() != editor.Accepted:
+            return
+
+        new_layout_name = editor.saved_layout_name
+        if not new_layout_name:
+            return
+
+        settings_dialog.refresh_layout_list(selected_name=new_layout_name)
+
+        # 保存策略默认支持“保存后切换当前布局”，这里按索引触发现有切换逻辑
+        try:
+            layout_names = list(settings.WINDOW_LAYOUTS.keys())
+            idx = layout_names.index(new_layout_name)
+            self.on_layout_changed(idx)
+        except Exception:
+            pass
+
+    def on_layout_delete_clicked(self, settings_dialog, layout_name):
+        """删除布局并刷新下拉列表；若删除当前布局则自动切换到替代布局。"""
+        from config.settings import delete_window_layout
+
+        new_current = delete_window_layout(layout_name)
+        if not new_current:
+            return
+
+        settings_dialog.refresh_layout_list(selected_name=new_current)
+
+        try:
+            if new_current != self.layout_name:
+                layout_names = list(settings.WINDOW_LAYOUTS.keys())
+                idx = layout_names.index(new_current)
+                self.on_layout_changed(idx)
+        except Exception:
+            pass
 
     def on_pause_clicked(self):
         """
