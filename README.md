@@ -3,8 +3,7 @@
 ## 主界面
 ![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220839.png?raw=true)
 ![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220932.png?raw=true)
-
-![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220911.png?raw=true)
+![](https://github.com/luckFan0519/Han_card_tracker/blob/han_card_tracker_v2.1/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-04-18%20001412.png?raw=true)
 
 
 
@@ -145,9 +144,7 @@ window_layouts:
 区域坐标为归一化坐标（0.0-1.0），表示相对于窗口的位置。
 <br>
 **注意 ：**<br>
-窗口截图时，确保游戏窗口完全可见，不被遮挡。
-<br>
-窗口截图时,尽量使用screen_capture.py中的截图函数.
+窗口截图时，确保游戏窗口完全可见，不被遮挡。可视化添加时,不要被除记牌器之外的窗口遮挡.
 <br>
 同一软件不同模式下的扑克牌布局可能不同，需要根据实际情况调整布局配置。
 <br>
