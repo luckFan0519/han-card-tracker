@@ -99,19 +99,19 @@ python main.py
 
 配置文件位于 `config/config.yaml`，主要参数：
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `detect_interval_sec` | 检测间隔（秒） | 0.2 |
-| `reset_time` | 无目标重置时间（秒） | 3.0 |
-| `frame_length` | 连续帧验证长度 | 3 |
-| `device_choice` | 设备选择（cpu/cuda） | cuda |
-| `yolo_confidence_threshold` | YOLO置信度阈值 | 0.6 |
-| `yolo_iou_threshold` | YOLO IOU阈值 | 0.45 |
-| `always_on_top` | 窗口置顶 | true |
-| `show_played_cards` | 显示出牌记录 | true |
-| `debug_mode` | 调试模式（控制日志与调试截图） | true |
-| `little_joker_shown` | 小王显示字符（出牌记录） | 🃟 |
-| `big_joker_shown` | 大王显示字符（出牌记录） | 🃏 |
+| 参数 | 说明 | 默认值   |
+|------|------|-------|
+| `detect_interval_sec` | 检测间隔（秒） | 0.2   |
+| `reset_time` | 无目标重置时间（秒） | 3.0   |
+| `frame_length` | 连续帧验证长度 | 3     |
+| `device_choice` | 设备选择（cpu/cuda） | cuda  |
+| `yolo_confidence_threshold` | YOLO置信度阈值 | 0.6   |
+| `yolo_iou_threshold` | YOLO IOU阈值 | 0.45  |
+| `always_on_top` | 窗口置顶 | true  |
+| `show_played_cards` | 显示出牌记录 | true  |
+| `debug_mode` | 调试模式（控制日志与调试截图） | false |
+| `little_joker_shown` | 小王显示字符（出牌记录） | 🃟    |
+| `big_joker_shown` | 大王显示字符（出牌记录） | 🃏    |
 
 **注意：** `little_joker_shown` 和 `big_joker_shown` 仅影响**出牌记录区域**的显示，不影响主界面牌名显示。
 
@@ -126,9 +126,9 @@ python main.py
 - 程序启动时若 `debug_mode: false`，会清空整个 `debug_img/` 历史调试图片。
 
 ### **自定义窗口布局 (重要)**
-如需适配其他斗地主软件，在 `config.yaml` 中添加新的布局配置：
+如需适配其他斗地主软件，**推荐通过可视化编辑快速添加布局**
 <br>
-可使用 'utils/add_layout' 下的脚本脚本绘制布局图，辅助配置。
+也可以在 `config.yaml` 中添加新的布局配置：
 
 ```yaml
 window_layouts:
