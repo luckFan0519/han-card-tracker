@@ -3,9 +3,10 @@ import traceback
 from core.card_detector import CardDetector
 from config.settings import WAIT_BEGIN, HAS_STARTED, STARTED_RECORD_CARD, TOTAL_CARDS
 from PySide6.QtCore import QObject, Signal, Slot
-from config.settings import DEBUG_MODE
 import time
 import config.settings as settings
+from config.settings import BASE_DIR
+from core.debug_image_manager import get_debug_image_manager
 
 
 class CardTracker:
@@ -29,6 +30,7 @@ class CardTracker:
         self.show_self_cards = []
         self.remain_cards = TOTAL_CARDS.copy()
         self.no_target_time = time.time()
+        self.debug_manager = get_debug_image_manager(BASE_DIR)
 
     def reset(self): # 重置记牌器
         self.state = WAIT_BEGIN
@@ -60,7 +62,7 @@ class CardTracker:
 
         self.no_target_time = time.time()
 
-        if DEBUG_MODE:
+        if settings.DEBUG_MODE:
             print("------------------------------------------")
             print("player_hand: ", player_hand)
             print("opponent_left: ", opponent_left)
@@ -108,6 +110,8 @@ class CardTracker:
 
         if self.state == WAIT_BEGIN:
             if self.__check_card(self.landlord_cards):  # 检测到地主的底牌, 开始游戏
+                if settings.DEBUG_MODE:
+                    self.debug_manager.start_new_game()
                 self.state = HAS_STARTED
 
 

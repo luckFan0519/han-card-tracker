@@ -37,9 +37,18 @@
 - 新斗地主布局：先用 `utils/add_layout/list_windows.py` 找窗口标题，再用 `utils/add_layout/screen_capture.py` 截图。
 - 用 `utils/add_layout/draw_layout.py` 在截图上绘制区域，确认 `player_hand/player_played/opponent_left/opponent_right/landlord_cards`。
 - 运行主程序：`python main.py`。
-- 调试开关是 `debug_mode`（`config.yaml`），会影响控制台日志输出。
+- 调试开关是 `debug_mode`（`config.yaml`），会影响控制台日志输出和调试截图保存。
 
-## 7) 环境与集成边界
+## 7) 调试截图资产约定（新增逻辑）
+- 统一由 `core/debug_image_manager.py` 管理，不要在 `CardDetector`/`CardTracker` 外部手写落盘逻辑。
+- 保存内容是“成对帧”：原始截图到 `debug_img/row/`，YOLO 标注图到 `debug_img/yolo/`，同局同帧同名。
+- 每局目录命名固定为 `game_N`（`game_1`, `game_2`, ...），帧命名固定为 `1.png` 递增。
+- 单局最多 `1000` 张；达到上限后该局后续帧不保存，并且仅打印一次提示（避免刷屏）。
+- 全局只保留最近 `3` 局；新局创建后会清理更旧目录。
+- 启动时执行 `bootstrap(DEBUG_MODE)`：若调试关闭则清空 `debug_img/` 并重置编号。
+
+## 8) 环境与集成边界
+
 - 当前实现依赖 Windows 截图链路（`win32gui/win32ui/win32con` + DPI aware），默认是 Windows 场景。
 - YOLO 权重默认路径是 `yolo/weights/best.pt`；可用 `other_YOLO_weights/` 中模型手动覆盖。
 - 关键三方：`ultralytics`、`torch`、`PySide6`、`opencv-python`、`PyYAML`、`pillow`。

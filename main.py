@@ -4,7 +4,9 @@ from PySide6.QtGui import QFont
 from PySide6.QtCore import qInstallMessageHandler
 from ui.main_window import CardUI
 from ui.styles import load_qss
+import config.settings as settings
 from config.settings import BASE_DIR
+from core.debug_image_manager import get_debug_image_manager
 
 
 def _qt_message_handler(msg_type, context, message):
@@ -28,6 +30,10 @@ def main():
         pass
 
     app = QApplication(sys.argv)
+
+    # 启动时根据 debug_mode 做一次初始化：关闭调试时清空历史调试图
+    debug_manager = get_debug_image_manager(BASE_DIR)
+    debug_manager.bootstrap(settings.DEBUG_MODE)
 
     # 设置一个明确的应用程序字体，避免 Qt 在内部使用无效的 pointSize (-1)
     try:

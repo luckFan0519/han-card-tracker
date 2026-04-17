@@ -18,6 +18,7 @@
 - 🎯 **多布局支持** - 可适配不同斗地主软件（支持自定义窗口布局）
 - ⏸️ **暂停/恢复** - 可随时暂停和恢复检测
 - ⚙️ **灵活配置** - 支持检测间隔、重置时间、置信度等多种参数调整
+- 🧪 **调试截图留存** - 可按局保存原始截图与 YOLO 标注截图，便于排查误识别
 
 ## 技术栈
 
@@ -108,10 +109,21 @@ python main.py
 | `yolo_iou_threshold` | YOLO IOU阈值 | 0.45 |
 | `always_on_top` | 窗口置顶 | true |
 | `show_played_cards` | 显示出牌记录 | true |
+| `debug_mode` | 调试模式（控制日志与调试截图） | true |
 | `little_joker_shown` | 小王显示字符（出牌记录） | 🃟 |
 | `big_joker_shown` | 大王显示字符（出牌记录） | 🃏 |
 
 **注意：** `little_joker_shown` 和 `big_joker_shown` 仅影响**出牌记录区域**的显示，不影响主界面牌名显示。
+
+### 调试截图说明（debug_mode）
+
+- 当 `debug_mode: true` 时，会保存两类图片：
+  - 原始截图：`debug_img/row/game_N/`
+  - YOLO 标注图：`debug_img/yolo/game_N/`
+- 每局会创建一个新目录，目录名为 `game_1`, `game_2`, `game_3` ...，图片名为 `1.png`, `2.png` ...
+- 每局最多保存 `1000` 张；达到上限后该局后续截图不再保存，并仅打印一次提示。
+- 最多只保留最近 `3` 局；新局开始时会自动删除更旧的局目录。
+- 程序启动时若 `debug_mode: false`，会清空整个 `debug_img/` 历史调试图片。
 
 ### **自定义窗口布局 (重要)**
 如需适配其他斗地主软件，在 `config.yaml` 中添加新的布局配置：
@@ -153,7 +165,13 @@ ddz_cards_tracker_8/
 ├── core/
 │   ├── card_tracker.py         # 记牌逻辑（状态机）
 │   ├── card_detector.py        # YOLO检测器
+│   ├── debug_image_manager.py  # 调试截图管理（按局保存/清理）
 │   └── screen_capture.py       # 窗口截图
+├── debug_img/                  # 调试截图输出目录（运行时生成）
+│   ├── row/
+│   │   └── game_1/             # 原始截图：1.png ~ 1000.png
+│   └── yolo/
+│       └── game_1/             # YOLO标注图：与 row 同名同帧
 ├── ui/
 │   ├── main_window.py          # 主窗口UI
 │   ├── settings_dialog.py      # 设置对话框

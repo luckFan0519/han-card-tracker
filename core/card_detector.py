@@ -4,6 +4,10 @@ import config.settings as settings
 from core.screen_capture import ScreenCapture
 from typing import List, Dict, Tuple
 from config.settings import YOLO_TO_CARD_MAPPING
+from config.settings import BASE_DIR
+from PIL import Image
+
+from core.debug_image_manager import get_debug_image_manager
 
 class CardDetector:
 
@@ -26,6 +30,7 @@ class CardDetector:
         self.window_title = self.layout_config["window_title"]
         self.screen_capture = ScreenCapture(self.window_title)
         self.model, self.device = self.__load_model() # 自动加载模型
+        self.debug_manager = get_debug_image_manager(BASE_DIR)
 
     # ================= 选择设备 =================
     def __load_model(self):
@@ -249,6 +254,17 @@ class CardDetector:
             device=self.device,
             verbose=False,
         )
+
+        if settings.DEBUG_MODE and img is not None and results:
+            try:
+                yolo_bgr = results[0].plot()
+                yolo_rgb = yolo_bgr[:, :, ::-1]
+                yolo_image = Image.fromarray(yolo_rgb)
+                self.debug_manager.save_frame(img, yolo_image)
+            except Exception:
+                # 调试图片保存失败不影响主流程
+                pass
+
         return results
 
     def __trans_yolo_to_card(self, r): # yolo 标签转为扑克牌点数
