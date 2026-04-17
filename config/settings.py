@@ -1,8 +1,13 @@
 import os
+import sys
 import yaml
 
 # ==================== 路径配置 ====================
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# PyInstaller 冻结后优先使用 exe 所在目录，便于读取和持久化外部配置。
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, 'config', 'config.yaml')
 YOLO_MODEL_PATH = os.path.join(BASE_DIR, 'yolo', 'weights', 'best.pt')
 

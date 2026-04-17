@@ -4,7 +4,7 @@ current_layout: JJ斗地主(含控件)
 debug_mode: false
 detect_interval_sec: 0.2
 device_choice: cuda
-frame_length: 4
+frame_length: 3
 little_joker_shown: 🃟
 reset_time: 3.0
 show_played_cards: true
