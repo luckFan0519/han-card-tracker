@@ -1,3 +1,4 @@
+import os
 import torch
 from ultralytics import YOLO
 import config.settings as settings
@@ -34,6 +35,12 @@ class CardDetector:
 
     # ================= 选择设备 =================
     def __load_model(self):
+        if not os.path.exists(self.weight_path):
+            raise FileNotFoundError(
+                f"未找到本地模型文件: {self.weight_path}。"
+                f"请确认打包时包含 yolo/weights/best.pt。"
+            )
+
         model = YOLO(self.weight_path)
         
         # 根据用户设置选择设备

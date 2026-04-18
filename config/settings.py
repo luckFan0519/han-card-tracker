@@ -1,15 +1,73 @@
 import os
 import sys
+import shutil
 import yaml
 
 # ==================== 路径配置 ====================
-# PyInstaller 冻结后优先使用 exe 所在目录，便于读取和持久化外部配置。
+# BASE_DIR: 可写运行目录（用于持久化配置/调试输出）
+# RESOURCE_DIR: 资源读取目录（兼容 PyInstaller 的 _internal 布局）
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _looks_like_resource_root(base_dir: str) -> bool:
+    expected_files = (
+        ('yolo', 'weights', 'best.pt'),
+        ('ui', 'ui.qss'),
+        ('config', 'config.yaml'),
+    )
+    for parts in expected_files:
+        if os.path.exists(os.path.join(base_dir, *parts)):
+            return True
+    return False
+
+
+def _resolve_resource_dir() -> str:
+    if not getattr(sys, 'frozen', False):
+        return BASE_DIR
+
+    candidates = []
+    meipass_dir = getattr(sys, '_MEIPASS', None)
+    if meipass_dir:
+        candidates.append(meipass_dir)
+    candidates.append(os.path.join(BASE_DIR, '_internal'))
+    candidates.append(BASE_DIR)
+
+    for candidate in candidates:
+        if _looks_like_resource_root(candidate):
+            return candidate
+    return BASE_DIR
+
+
+RESOURCE_DIR = _resolve_resource_dir()
 CONFIG_PATH = os.path.join(BASE_DIR, 'config', 'config.yaml')
-YOLO_MODEL_PATH = os.path.join(BASE_DIR, 'yolo', 'weights', 'best.pt')
+DEFAULT_CONFIG_PATH = os.path.join(RESOURCE_DIR, 'config', 'config.yaml')
+YOLO_MODEL_PATH = os.path.join(RESOURCE_DIR, 'yolo', 'weights', 'best.pt')
+QSS_PATH = os.path.join(RESOURCE_DIR, 'ui', 'ui.qss')
+
+
+def _ensure_runtime_config_exists():
+    """冻结环境下：首次运行时将打包内配置复制到可写目录。"""
+    if not getattr(sys, 'frozen', False):
+        return
+
+    config_dir = os.path.dirname(CONFIG_PATH)
+    os.makedirs(config_dir, exist_ok=True)
+
+    if os.path.exists(CONFIG_PATH):
+        return
+
+    if os.path.exists(DEFAULT_CONFIG_PATH):
+        try:
+            shutil.copy2(DEFAULT_CONFIG_PATH, CONFIG_PATH)
+            print(f"初始化配置文件: {CONFIG_PATH}")
+        except Exception as e:
+            print(f"初始化配置文件失败: {e}")
+
+
+_ensure_runtime_config_exists()
 
 # 加载配置文件
 def load_config():
@@ -19,6 +77,14 @@ def load_config():
         return config
     except Exception as e:
         print(f"加载配置文件失败: {e}")
+        if DEFAULT_CONFIG_PATH != CONFIG_PATH:
+            try:
+                with open(DEFAULT_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                print(f"已从打包资源读取默认配置: {DEFAULT_CONFIG_PATH}")
+                return config
+            except Exception as e2:
+                print(f"加载打包内默认配置失败: {e2}")
         # 返回默认配置作为 fallback
         return {
             'reset_time': 3.5,

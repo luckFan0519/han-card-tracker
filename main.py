@@ -5,7 +5,7 @@ from PySide6.QtCore import qInstallMessageHandler
 from ui.main_window import CardUI
 from ui.styles import load_qss
 import config.settings as settings
-from config.settings import BASE_DIR
+from config.settings import BASE_DIR, QSS_PATH
 from core.debug_image_manager import get_debug_image_manager
 
 
@@ -47,9 +47,8 @@ def main():
         except Exception:
             pass
 
-    dir_path = BASE_DIR + "\\ui\\ui.qss"
     # 读取并应用 QSS（如果存在）
-    load_qss(app, dir_path)
+    load_qss(app, QSS_PATH)
 
     w = CardUI()
     w.show()

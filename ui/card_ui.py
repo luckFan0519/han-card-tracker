@@ -12,11 +12,10 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from config.settings import BASE_DIR
+from config.settings import QSS_PATH
 from ui.main_window import CardUI
 from ui.styles import load_qss
 
-QSS_PATH = BASE_DIR + "\\ui\\ui.qss"
 
 
 def main():
