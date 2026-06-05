@@ -100,7 +100,7 @@ class SettingsDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("设置")
-        self.setMinimumSize(600, 400)
+        self.setMinimumSize(680, 400)
 
         self.on_reset_callback = on_reset_callback
         self.on_interval_change_callback = on_interval_change_callback
@@ -215,8 +215,18 @@ class SettingsDialog(QDialog):
         layout_label = QLabel("布局配置管理：")
         layout_label.setMinimumWidth(self.LABEL_MIN_WIDTH)
         layout_row.addWidget(layout_label)
-        layout_row.addWidget(self.combo_layout)
-        layout_row.addStretch()
+        layout_row.addWidget(self.combo_layout, 1)
+        self.btn_refresh_layout = QPushButton("\u21bb")
+        self.btn_refresh_layout.setFixedSize(28, 28)
+        self.btn_refresh_layout.setToolTip("刷新布局列表")
+        from PySide6.QtGui import QFont
+        font = self.btn_refresh_layout.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 2)
+        self.btn_refresh_layout.setFont(font)
+        self.btn_refresh_layout.clicked.connect(lambda: self.refresh_layout_list(selected_name=self.combo_layout.currentText()))
+        layout_row.addWidget(self.btn_refresh_layout)
+        layout_row.addSpacing(8)
 
         self.btn_layout_editor = QPushButton("可视化编辑")
         self.btn_layout_editor.setObjectName("BtnLayoutEditor")
@@ -383,6 +393,12 @@ class SettingsDialog(QDialog):
 
     def _on_layout_delete_requested(self, layout_name: str):
         """点击下拉项删除按钮时，弹确认框并触发布局删除回调。"""
+        from config.settings import WINDOW_LAYOUTS
+
+        if len(WINDOW_LAYOUTS) <= 1:
+            QMessageBox.warning(self, "无法删除", "至少需要保留一个布局配置。")
+            return
+
         confirm = QMessageBox.question(
             self,
             "确认删除",
@@ -393,17 +409,23 @@ class SettingsDialog(QDialog):
         if confirm != QMessageBox.Yes:
             return
         if self.on_layout_delete_callback:
-            self.on_layout_delete_callback(self, layout_name)
+            deleted = self.on_layout_delete_callback(self, layout_name)
+            if deleted is False:
+                QMessageBox.warning(self, "删除失败", "布局删除失败，请检查配置文件后重试。")
 
     def refresh_layout_list(self, selected_name=None):
         """刷新布局下拉列表并可选指定当前项。"""
-        from config.settings import WINDOW_LAYOUTS
+        import config.settings as settings
 
-        names = list(WINDOW_LAYOUTS.keys())
+        names = list(settings.WINDOW_LAYOUTS.keys())
         self._set_combo_items(self.combo_layout, names, default_index=0)
-        if selected_name:
-            idx = self.combo_layout.findText(selected_name)
-            self._set_combo_current_safely(self.combo_layout, idx)
+        target_name = selected_name or settings.CURRENT_LAYOUT
+        if target_name:
+            idx = self.combo_layout.findText(target_name)
+            if idx >= 0:
+                self._set_combo_current_safely(self.combo_layout, idx)
+        self.combo_layout.update()
+        self.combo_layout.repaint()
 
     def set_current_interval(self, interval_text):
         """

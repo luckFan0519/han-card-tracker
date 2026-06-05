@@ -307,6 +307,8 @@ class CardUI(QMainWindow):
         # 设置当前是否显示在最上层
         from config.settings import ALWAYS_ON_TOP
         dialog.set_current_always_on_top(ALWAYS_ON_TOP)
+        if ALWAYS_ON_TOP:
+            dialog.setWindowFlag(Qt.WindowStaysOnTopHint, True)
 
         # 设置当前是否显示玩家所出的牌
         from config.settings import SHOW_PLAYED_CARDS
@@ -335,9 +337,10 @@ class CardUI(QMainWindow):
     def on_layout_editor_clicked(self, settings_dialog):
         """打开可视化布局编辑器并刷新设置对话框中的布局列表。"""
         editor = LayoutEditorDialog(
-            self,
+            settings_dialog,
             initial_layout_name=self.layout_name,
             on_restore_topmost=lambda: self._reapply_topmost_if_enabled(settings_dialog),
+            stay_on_top=settings.ALWAYS_ON_TOP,
         )
         if editor.exec() != editor.Accepted:
             return
@@ -346,15 +349,22 @@ class CardUI(QMainWindow):
         if not new_layout_name:
             return
 
-        settings_dialog.refresh_layout_list(selected_name=new_layout_name)
+        should_set_current = bool(getattr(editor, "saved_set_current", True))
+        if should_set_current or new_layout_name == self.layout_name:
+            self._switch_layout_by_name(new_layout_name)
 
-        # 保存策略默认支持“保存后切换当前布局”，这里按索引触发现有切换逻辑
-        try:
-            layout_names = list(settings.WINDOW_LAYOUTS.keys())
-            idx = layout_names.index(new_layout_name)
-            self.on_layout_changed(idx)
-        except Exception:
-            pass
+        selected_name = self.layout_name
+        if not should_set_current and new_layout_name != self.layout_name:
+            selected_name = self.layout_name
+        QTimer.singleShot(0, lambda: settings_dialog.refresh_layout_list(selected_name=selected_name))
+
+    def _switch_layout_by_name(self, layout_name: str) -> bool:
+        """按布局名切换，避免设置窗口刷新后索引和内存列表不同步。"""
+        layout_names = list(settings.WINDOW_LAYOUTS.keys())
+        if layout_name not in layout_names:
+            return False
+        self.on_layout_changed(layout_names.index(layout_name))
+        return True
 
     def on_layout_delete_clicked(self, settings_dialog, layout_name):
         """删除布局并刷新下拉列表；若删除当前布局则自动切换到替代布局。"""
@@ -362,7 +372,7 @@ class CardUI(QMainWindow):
 
         new_current = delete_window_layout(layout_name)
         if not new_current:
-            return
+            return False
 
         settings_dialog.refresh_layout_list(selected_name=new_current)
 
@@ -373,6 +383,7 @@ class CardUI(QMainWindow):
                 self.on_layout_changed(idx)
         except Exception:
             pass
+        return True
 
     def on_pause_clicked(self):
         """

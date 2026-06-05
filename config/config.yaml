@@ -1,6 +1,6 @@
-always_on_top: true
+always_on_top: false
 big_joker_shown: 🃏
-current_layout: 欢乐斗地主
+current_layout: JJ斗地主(含控件)
 debug_mode: true
 detect_interval_sec: 0.2
 device_choice: cuda
@@ -65,34 +65,6 @@ window_layouts:
       - 0.96
       - 0.6
     window_title: JJ斗地主
-  欢乐斗地主:
-    layout:
-      landlord_cards:
-      - 0.4568854568854569
-      - 0.16351684470008218
-      - 0.545045045045045
-      - 0.22925225965488907
-      opponent_left:
-      - 0.2728442728442728
-      - 0.3360723089564503
-      - 0.5148005148005148
-      - 0.4741166803615448
-      opponent_right:
-      - 0.51994851994852
-      - 0.3360723089564503
-      - 0.7606177606177607
-      - 0.47576006573541496
-      player_hand:
-      - 0.016087516087516088
-      - 0.5916187345932621
-      - 0.9877734877734877
-      - 0.761709120788825
-      player_played:
-      - 0.11454311454311454
-      - 0.48233360723089563
-      - 0.9736164736164736
-      - 0.5546425636811833
-    window_title: MuMu安卓设备
 yolo_confidence_threshold: 0.6
 yolo_iou_threshold: 0.45
 yolo_to_card_mapping:

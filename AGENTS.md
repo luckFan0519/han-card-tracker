@@ -34,10 +34,14 @@
 - 样式依赖动态属性：`depleted` 与 `count`，更新后需 `unpolish/polish` 触发 QSS 刷新。
 
 ## 6) 扩展工作流（布局/调试）
-- 新斗地主布局：先用 `utils/add_layout/list_windows.py` 找窗口标题，再用 `utils/add_layout/screen_capture.py` 截图。
-- 用 `utils/add_layout/draw_layout.py` 在截图上绘制区域，确认 `player_hand/player_played/opponent_left/opponent_right/landlord_cards`。
+- **可视化布局编辑（推荐）**：在主界面"设置"→"基本设置"页中点击"可视化编辑"，打开 `LayoutEditorDialog`。
+  - 选择目标窗口标题 → 点击"截图"（自动下沉本程序窗口避免遮挡）。
+  - 在画布上框选五个牌区：玩家手牌 / 本家出牌 / 上家出牌 / 下家出牌 / 地主底牌。
+  - 点击"预览校验"确认区域标注正确 → "保存"写入 `config.yaml`。
+  - 截图时窗口下沉/恢复通过上下文管理器 `_lowered_app_windows()` 保证资源安全释放。
+  - 保存后始终切换为当前布局；设置页面提供 ↻ 刷新按钮手动刷新布局列表。
+- 命令行工具（高级/调试用）：`utils/add_layout/list_windows.py` 找窗口标题、`screen_capture.py` 截图、`draw_layout.py` 手动绘制区域。
 - 运行主程序：`python main.py`。
-- 调试开关是 `debug_mode`（`config.yaml`），会影响控制台日志输出和调试截图保存。
 
 ## 7) 调试截图资产约定（新增逻辑）
 - 统一由 `core/debug_image_manager.py` 管理，不要在 `CardDetector`/`CardTracker` 外部手写落盘逻辑。

@@ -149,8 +149,8 @@ class RectCanvas(QLabel):
             return
 
         if self._display_scale < 0.999:
-            target_w = max(1, int(round(self._base_pixmap.width() * self._display_scale)))
-            target_h = max(1, int(round(self._base_pixmap.height() * self._display_scale)))
+            target_w = max(1, int(self._base_pixmap.width() * self._display_scale))
+            target_h = max(1, int(self._base_pixmap.height() * self._display_scale))
             pixmap = self._base_pixmap.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         else:
             pixmap = QPixmap(self._base_pixmap)
@@ -250,18 +250,28 @@ class PreviewDialog(QDialog):
 
 
 class LayoutEditorDialog(QDialog):
-    def __init__(self, parent=None, initial_layout_name: Optional[str] = None, on_restore_topmost=None):
+    def __init__(
+        self,
+        parent=None,
+        initial_layout_name: Optional[str] = None,
+        on_restore_topmost=None,
+        stay_on_top: bool = False,
+    ):
         super().__init__(parent)
         self.setWindowFlag(Qt.WindowMinMaxButtonsHint, True)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, stay_on_top)
         self.setWindowTitle("可视化布局编辑")
         self.setMinimumSize(860, 560)
         self.resize(920, 620)
 
         self.saved_layout_name: Optional[str] = None
+        self.saved_set_current = False
         self._captured_image = None
         self._lowered_windows = []
+        self._window_restore_states = []
         self._windows_pushed_back = False
         self._on_restore_topmost = on_restore_topmost
+        self._stay_on_top = stay_on_top
 
         root = QVBoxLayout(self)
 
@@ -278,9 +288,6 @@ class LayoutEditorDialog(QDialog):
         top.addWidget(self.btn_refresh_titles, 1, 2)
         top.addWidget(self.btn_capture, 1, 3)
 
-        self.chk_auto_lower = QCheckBox("截图时自动下沉本程序窗口")
-        self.chk_auto_lower.setChecked(True)
-
         root.addLayout(top)
 
         content = QHBoxLayout()
@@ -289,6 +296,7 @@ class LayoutEditorDialog(QDialog):
         self.canvas = RectCanvas()
         self.canvas_scroll = QScrollArea()
         self.canvas_scroll.setWidgetResizable(False)
+        self.canvas_scroll.setAlignment(Qt.AlignCenter)
         self.canvas_scroll.setWidget(self.canvas)
         self.canvas_scroll.viewport().installEventFilter(self)
         content.addWidget(self.canvas_scroll, 3)
@@ -316,9 +324,6 @@ class LayoutEditorDialog(QDialog):
         self.chk_set_current = QCheckBox("保存后切换为当前布局")
         self.chk_set_current.setChecked(True)
         right_panel.addWidget(self.chk_set_current)
-
-        # 截图行为选项放在保存选项下方，便于集中管理保存相关动作
-        right_panel.addWidget(self.chk_auto_lower)
 
         right_panel.addStretch()
 
@@ -367,53 +372,52 @@ class LayoutEditorDialog(QDialog):
                 self.combo_window_title.setCurrentIndex(idx)
 
     def _send_app_windows_to_bottom(self):
-        """截图前将本应用可见窗口尽量压到最底层，减少遮挡。"""
+        """截图前把本应用窗口临时移出屏幕，避免遮挡目标窗口。"""
         app = QApplication.instance()
         if app is None:
             return
 
+        screen = self.screen() or app.primaryScreen()
+        if screen is not None:
+            virtual_geometry = screen.virtualGeometry()
+            offscreen_x = virtual_geometry.left() - 10000
+            offscreen_y = virtual_geometry.top() - 10000
+        else:
+            offscreen_x = -10000
+            offscreen_y = -10000
+
         windows = [w for w in app.topLevelWidgets() if w is not None and w.isVisible()]
         self._lowered_windows = windows
+        self._window_restore_states = []
 
-        # Windows 下优先使用原生 API 强制置底
-        if sys.platform == "win32":
+        for index, w in enumerate(windows):
             try:
-                import ctypes
-
-                user32 = ctypes.windll.user32
-                HWND_BOTTOM = 1
-                SWP_NOSIZE = 0x0001
-                SWP_NOMOVE = 0x0002
-                SWP_NOACTIVATE = 0x0010
-                flags = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
-                for w in windows:
-                    try:
-                        user32.SetWindowPos(int(w.winId()), HWND_BOTTOM, 0, 0, 0, 0, flags)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-        # Qt 兜底
-        for w in windows:
-            try:
-                w.lower()
+                self._window_restore_states.append((w, w.frameGeometry()))
+                self._move_window_no_activate(w, offscreen_x + index * 20, offscreen_y + index * 20)
             except Exception:
                 pass
 
         app.processEvents()
+        self._wait_for_desktop_to_settle()
         self._windows_pushed_back = True
 
     def _restore_app_windows_after_capture(self):
-        """截图后恢复本应用窗口层级。"""
+        """截图后恢复本应用窗口位置。"""
         if not self._windows_pushed_back:
             return
 
         app = QApplication.instance()
-        for w in self._lowered_windows:
+        for w, geometry in self._window_restore_states:
             try:
-                if w is not None and w.isVisible():
-                    w.raise_()
+                if w is not None:
+                    self._move_window_no_activate(
+                        w,
+                        geometry.x(),
+                        geometry.y(),
+                        geometry.width(),
+                        geometry.height(),
+                        resize=True,
+                    )
             except Exception:
                 pass
 
@@ -428,6 +432,56 @@ class LayoutEditorDialog(QDialog):
 
         self._windows_pushed_back = False
         self._lowered_windows = []
+        self._window_restore_states = []
+
+    def _move_window_no_activate(self, widget, x: int, y: int, width: int = 0, height: int = 0, resize: bool = False):
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                flags = 0x0010 | 0x0200 | 0x0004  # SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER
+                if not resize:
+                    flags |= 0x0001  # SWP_NOSIZE
+                ctypes.windll.user32.SetWindowPos(
+                    int(widget.winId()),
+                    0,
+                    int(x),
+                    int(y),
+                    int(width),
+                    int(height),
+                    flags,
+                )
+                return
+            except Exception:
+                pass
+
+        if resize:
+            widget.setGeometry(int(x), int(y), int(width), int(height))
+        else:
+            widget.move(int(x), int(y))
+
+    def _wait_for_desktop_to_settle(self):
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
+
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                ctypes.windll.dwmapi.DwmFlush()
+            except Exception:
+                pass
+
+        try:
+            import time
+
+            time.sleep(0.25)
+        except Exception:
+            pass
+
+        if app is not None:
+            app.processEvents()
 
     def _adjust_dialog_size_for_image(self):
         """截图后尽量放大编辑窗口，让画面显示更完整。"""
@@ -442,7 +496,7 @@ class LayoutEditorDialog(QDialog):
         available = screen.availableGeometry()
 
         side_panel_w = 320
-        extra_h = 220
+        extra_h = 180
         max_w = int(available.width() * 0.96)
         max_h = int(available.height() * 0.94)
 
@@ -450,6 +504,9 @@ class LayoutEditorDialog(QDialog):
         target_h = min(max_h, img_h + extra_h)
 
         self.resize(max(860, target_w), max(560, target_h))
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
 
     def _fit_canvas_to_viewport(self):
         if self._captured_image is None:
@@ -462,27 +519,21 @@ class LayoutEditorDialog(QDialog):
             QTimer.singleShot(0, self._fit_canvas_to_viewport)
         return super().eventFilter(watched, event)
 
+    def closeEvent(self, event):
+        self._restore_app_windows_after_capture()
+        super().closeEvent(event)
+
     def _capture_window(self):
         window_title = self.combo_window_title.currentText().strip()
         if not window_title:
             QMessageBox.warning(self, "提示", "请先选择窗口标题")
             return
 
-        auto_lower = self.chk_auto_lower.isChecked()
-        if auto_lower:
-            self._send_app_windows_to_bottom()
+        self._send_app_windows_to_bottom()
         try:
             image = capture_window_by_title(window_title)
         finally:
-            if auto_lower:
-                self._restore_app_windows_after_capture()
-                # 仅在自动下沉场景下兜底恢复置顶，避免影响普通截图流程。
-                try:
-                    from config.settings import ALWAYS_ON_TOP
-                    if ALWAYS_ON_TOP and callable(self._on_restore_topmost):
-                        self._on_restore_topmost()
-                except Exception:
-                    pass
+            self._restore_app_windows_after_capture()
 
         if image is None:
             QMessageBox.warning(self, "提示", "截图失败，请确认窗口可见且标题正确")
@@ -591,6 +642,18 @@ class LayoutEditorDialog(QDialog):
             QMessageBox.warning(self, "保存失败", err)
             return
 
+        existing = get_layout_config(layout_name)
+        if existing:
+            overwrite = QMessageBox.question(
+                self,
+                "覆盖已有布局",
+                f"布局“{layout_name}”已经存在，保存后会覆盖原配置。确定继续吗？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if overwrite != QMessageBox.Yes:
+                return
+
         try:
             save_layout(layout_name, window_title, normalized, self.chk_set_current.isChecked())
         except Exception as e:
@@ -598,6 +661,7 @@ class LayoutEditorDialog(QDialog):
             return
 
         self.saved_layout_name = layout_name
+        self.saved_set_current = self.chk_set_current.isChecked()
         QMessageBox.information(self, "成功", f"布局已保存: {layout_name}")
         self.accept()
 
