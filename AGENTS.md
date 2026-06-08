@@ -1,4 +1,4 @@
-# AGENTS 指南（Han_card_tracker）
+# AGENTS 指南（han_card_tracker）
 
 ## 1) 先看什么（最快进入状态）
 - 入口是 `main.py`：创建 `QApplication`、加载 `ui/ui.qss`、启动 `CardUI`。
