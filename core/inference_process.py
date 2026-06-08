@@ -63,8 +63,10 @@ def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: st
         # 执行识别
         if cmd == "detect":
             try:
+                t0 = time.perf_counter()
                 result = tracker.get_cards_number()
-                result_queue.put(("ok", result))
+                elapsed_ms = (time.perf_counter() - t0) * 1000
+                result_queue.put(("ok", result, elapsed_ms))
             except Exception:
                 result_queue.put(("error", traceback.format_exc()))
 
@@ -100,7 +102,7 @@ class InferenceWorker(QObject):
     上层代码只需替换 Worker 类型即可。
     """
 
-    result_ready = Signal(dict, list, list, list)
+    result_ready = Signal(dict, list, list, list, float)
     error = Signal(str)
     finished = Signal()
 
@@ -202,15 +204,16 @@ class InferenceWorker(QObject):
         # 批量读取所有可用结果
         while True:
             try:
-                status, data = self._result_queue.get_nowait()
+                msg = self._result_queue.get_nowait()
             except queue.Empty:
                 break
             except (OSError, EOFError):
                 break
 
-            if status == "ok":
-                self.result_ready.emit(*data)
-            elif status == "error":
-                self.error.emit(data)
+            if msg[0] == "ok":
+                _, result, elapsed_ms = msg
+                self.result_ready.emit(*result, elapsed_ms)
+            elif msg[0] == "error":
+                self.error.emit(msg[1])
 
             self.finished.emit()

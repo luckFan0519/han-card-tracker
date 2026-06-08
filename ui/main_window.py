@@ -415,8 +415,8 @@ class CardUI(QMainWindow):
         self._busy = True
         self.worker.request_detect()
 
-    @Slot(dict, list, list, list)
-    def on_result_ready(self, remain_cards: dict, show_left: list, show_right: list, show_self: list):
+    @Slot(dict, list, list, list, float)
+    def on_result_ready(self, remain_cards: dict, show_left: list, show_right: list, show_self: list, inference_ms: float):
         """
         收到 worker 的识别结果：
         - 更新剩余牌数量
@@ -434,6 +434,8 @@ class CardUI(QMainWindow):
             self.left_played_cards_label.setText("   上家     " + trans_yolo_names_to_string(show_left))
             self.right_played_cards_label.setText("   下家     " + trans_yolo_names_to_string(show_right))
             self._last_played_signature = played_signature
+
+        self.setWindowTitle(f"Han记牌器  ·  推理 {inference_ms:.0f}ms")
 
         for card in self.card_order:
             v = remain_cards.get(card, 0)
