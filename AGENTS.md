@@ -11,8 +11,8 @@
 - 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
 - 子进程主循环：`_inference_loop()` 在子进程中运行 `CardTracker.get_cards_number()`，通过命令队列接收指令、结果队列回传数据。
 - 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("touch_time",)` / `None`（终止）。
-- 结果协议：`("ok", (remain_cards, show_left, show_right, show_self))` / `("error", str)`。
-- 检测流水线：`CardDetector.detect()` = 截图 -> YOLO 推理 -> 按 layout 分区 -> YOLO 类名映射为牌点。
+- 结果协议：`("ok", (remain_cards, show_left, show_right, show_self), yolo_ms)` / `("error", str)`。
+- 检测流水线：`CardDetector.detect()` = 截图 -> YOLO 推理（计时） -> 保存调试图片（不计入推理耗时） -> 按 layout 分区 -> YOLO 类名映射为牌点。
 - 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。
 - 排序不是置信度顺序：`sort_cards_by_topright_rowwise()` 先按行再按列，避免出牌串顺序错乱。
 
@@ -50,13 +50,19 @@
 
 ## 7) 调试截图资产约定（新增逻辑）
 - 统一由 `core/debug_image_manager.py` 管理，不要在 `CardDetector`/`CardTracker` 外部手写落盘逻辑。
-- 保存内容是“成对帧”：原始截图到 `debug_img/row/`，YOLO 标注图到 `debug_img/yolo/`，同局同帧同名。
+- 保存内容是"成对帧"：原始截图到 `debug_img/row/`，YOLO 标注图到 `debug_img/yolo/`，同局同帧同名。
 - 每局目录命名固定为 `game_N`（`game_1`, `game_2`, ...），帧命名固定为 `1.png` 递增。
 - 单局最多 `1000` 张；达到上限后该局后续帧不保存，并且仅打印一次提示（避免刷屏）。
 - 全局只保留最近 `3` 局；新局创建后会清理更旧目录。
-- 启动时执行 `bootstrap(DEBUG_MODE)`：若调试关闭则清空 `debug_img/` 并重置编号。
+- **保存图片与调试模式分开控制**：`SAVE_DEBUG_IMAGES` 控制是否保存调试图片，`DEBUG_MODE` 仅控制终端日志输出。
+- 启动时执行 `bootstrap(SAVE_DEBUG_IMAGES)`：若保存图片关闭则清空 `debug_img/` 并重置编号。
 
-## 8) 环境与集成边界
+## 8) 耗时统计约定
+- YOLO 推理耗时：仅包含 `self.model(...)` 调用，不含截图和保存图片时间；在 `CardDetector.__perform_yolo_recognition()` 中用 `time.perf_counter()` 计时。
+- 整轮耗时：从 `request_one_update()` 发出检测请求到 `on_result_ready()` 收到结果，包含截图+推理+队列通信+轮询延迟。
+- 标题栏显示格式：`Han记牌器 · 推理 XXms · 整轮 XXms`，由 `SHOW_TIMING` 配置项控制是否显示。
+
+## 9) 环境与集成边界
 
 - 当前实现依赖 Windows 截图链路（`win32gui/win32ui/win32con` + DPI aware），默认是 Windows 场景。
 - YOLO 推理在独立子进程中运行（`multiprocessing`），主进程（UI）与子进程不共享 GIL；`main.py` 必须调用 `multiprocessing.freeze_support()` 以支持 PyInstaller 打包。

@@ -64,10 +64,10 @@ def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: st
         # 执行识别
         if cmd == "detect":
             try:
-                t0 = time.perf_counter()
                 result = tracker.get_cards_number()
-                elapsed_ms = (time.perf_counter() - t0) * 1000
-                result_queue.put(("ok", result, elapsed_ms))
+                # result = (remain_cards, show_left, show_right, show_self, yolo_ms)
+                yolo_ms = result[4]
+                result_queue.put(("ok", result[:4], yolo_ms))
             except Exception:
                 result_queue.put(("error", traceback.format_exc()))
 

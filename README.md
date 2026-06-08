@@ -92,7 +92,11 @@ python main.py
 - 帧长度（1-6帧）
 - 窗口置顶
 - 显示出牌记录
-- 调试模式
+- 调试模式（终端日志）
+- 保存调试图片
+- 显示耗时（标题栏推理/整轮耗时）
+- YOLO 模型选择
+- 置信度阈值
 
 ## 配置说明
 
@@ -108,21 +112,24 @@ python main.py
 | `yolo_iou_threshold` | YOLO IOU阈值 | 0.45  |
 | `always_on_top` | 窗口置顶 | true  |
 | `show_played_cards` | 显示出牌记录 | true  |
-| `debug_mode` | 调试模式（控制日志与调试截图） | false |
+| `debug_mode` | 调试模式（控制终端日志输出） | false |
+| `save_debug_images` | 保存调试图片（与调试模式分开控制） | false |
+| `show_timing` | 在标题栏显示推理耗时和整轮耗时 | true |
 | `little_joker_shown` | 小王显示字符（出牌记录） | 🃟    |
 | `big_joker_shown` | 大王显示字符（出牌记录） | 🃏    |
 
 **注意：** `little_joker_shown` 和 `big_joker_shown` 仅影响**出牌记录区域**的显示，不影响主界面牌名显示。
 
-### 调试截图说明（debug_mode）
+### 调试截图说明（save_debug_images）
 
-- 当 `debug_mode: true` 时，会保存两类图片：
+- 当 `save_debug_images: true` 时，会保存两类图片：
   - 原始截图：`debug_img/row/game_N/`
   - YOLO 标注图：`debug_img/yolo/game_N/`
 - 每局会创建一个新目录，目录名为 `game_1`, `game_2`, `game_3` ...，图片名为 `1.png`, `2.png` ...
 - 每局最多保存 `1000` 张；达到上限后该局后续截图不再保存，并仅打印一次提示。
 - 最多只保留最近 `3` 局；新局开始时会自动删除更旧的局目录。
-- 程序启动时若 `debug_mode: false`，会清空整个 `debug_img/` 历史调试图片。
+- 程序启动时若 `save_debug_images: false`，会清空整个 `debug_img/` 历史调试图片。
+- `debug_mode` 仅控制终端日志输出，与图片保存无关。
 
 ### **自定义窗口布局 (重要)**
 如需适配其他斗地主软件，**推荐通过可视化编辑快速添加布局**

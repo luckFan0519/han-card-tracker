@@ -15,6 +15,7 @@ from utils.trans_yolo_names_to_string import trans_yolo_names_to_string
 from ui.layout_editor_dialog import LayoutEditorDialog
 from ui.settings_dialog import SettingsDialog
 import config.settings as settings
+import time
 
 
 INTERVAL_TEXT_OPTIONS = ["0.1秒", "0.15秒", "0.2秒", "0.25秒", "0.3秒", "0.35秒", "0.4秒", "0.45秒", "0.5秒"]
@@ -223,6 +224,8 @@ class CardUI(QMainWindow):
 
         # 初始化定时器
         self._busy = False
+        self._last_cycle_start = time.perf_counter()  # 整轮耗时计时起点
+        self._last_round_ms = 0.0  # 上一轮整轮耗时
         self.timer = QTimer(self)
         self.timer.setInterval(int(self.detect_interval_sec * 1000))
         self.timer.timeout.connect(self.request_one_update)
@@ -259,6 +262,8 @@ class CardUI(QMainWindow):
             on_always_on_top_change_callback=None,
             on_show_played_cards_change_callback=self.on_show_played_cards_changed,
             on_debug_mode_change_callback=self.on_debug_mode_changed,
+            on_save_debug_images_change_callback=self.on_save_debug_images_changed,
+            on_show_timing_change_callback=self.on_show_timing_changed,
             on_layout_editor_callback=self.on_layout_editor_clicked,
             on_layout_delete_callback=self.on_layout_delete_clicked,
             on_model_change_callback=self.on_model_changed,
@@ -294,6 +299,14 @@ class CardUI(QMainWindow):
         # 设置当前调试模式
         from config.settings import DEBUG_MODE
         dialog.set_current_debug_mode(DEBUG_MODE)
+
+        # 设置当前保存调试图片
+        from config.settings import SAVE_DEBUG_IMAGES
+        dialog.set_current_save_debug_images(SAVE_DEBUG_IMAGES)
+
+        # 设置当前显示耗时
+        from config.settings import SHOW_TIMING
+        dialog.set_current_show_timing(SHOW_TIMING)
 
         # 设置当前模型选择
         from config.settings import YOLO_MODEL_NAME
@@ -423,6 +436,8 @@ class CardUI(QMainWindow):
         if self._busy or self.is_paused or self._is_settings_open:
             return
         self._busy = True
+        # 记录本轮开始时间（用于计算整轮耗时）
+        self._last_cycle_start = time.perf_counter()
         self.worker.request_detect()
 
     @Slot(dict, list, list, list, float)
@@ -433,6 +448,16 @@ class CardUI(QMainWindow):
         - v <= 0 时样式变灰
         - v > 0 时样式恢复正常
         """
+        # 计算整轮耗时（从本轮开始到收到结果）
+        now = time.perf_counter()
+        self._last_round_ms = (now - self._last_cycle_start) * 1000
+
+        # 更新标题栏
+        if settings.SHOW_TIMING:
+            self.setWindowTitle(f"Han记牌器  ·  推理 {inference_ms:.0f}ms  ·  整轮 {self._last_round_ms:.0f}ms")
+        else:
+            self.setWindowTitle("Han记牌器")
+
         # 更新出牌文本（仅在内容变化时更新）
         played_signature = (
             tuple(tuple(x) if isinstance(x, list) else x for x in show_left),
@@ -444,8 +469,6 @@ class CardUI(QMainWindow):
             self.left_played_cards_label.setText("   上家     " + trans_yolo_names_to_string(show_left))
             self.right_played_cards_label.setText("   下家     " + trans_yolo_names_to_string(show_right))
             self._last_played_signature = played_signature
-
-        self.setWindowTitle(f"Han记牌器  ·  推理 {inference_ms:.0f}ms")
 
         for card in self.card_order:
             v = remain_cards.get(card, 0)
@@ -835,6 +858,39 @@ class CardUI(QMainWindow):
         import config.settings as settings
         settings.DEBUG_MODE = debug_mode
         print(f"[UI] 调试模式已更新为: {'是' if debug_mode else '否'}")
+
+    def on_save_debug_images_changed(self, index):
+        """
+        保存调试图片改变时调用
+        """
+        save_debug_images = True if index == 1 else False
+
+        from config.settings import save_debug_images_choice
+        save_debug_images_choice(save_debug_images)
+
+        import config.settings as settings
+        settings.SAVE_DEBUG_IMAGES = save_debug_images
+        print(f"[UI] 保存调试图片已更新为: {'是' if save_debug_images else '否'}")
+
+    def on_show_timing_changed(self, index):
+        """
+        显示耗时改变时调用
+        """
+        show_timing = True if index == 1 else False
+
+        from config.settings import save_show_timing_choice
+        save_show_timing_choice(show_timing)
+
+        import config.settings as settings
+        settings.SHOW_TIMING = show_timing
+
+        # 立即更新标题栏
+        if show_timing:
+            self.setWindowTitle(f"Han记牌器  ·  推理 --ms  ·  整轮 --ms")
+        else:
+            self.setWindowTitle("Han记牌器")
+
+        print(f"[UI] 显示耗时已更新为: {'是' if show_timing else '否'}")
 
     def _update_played_cards_visibility(self):
         """

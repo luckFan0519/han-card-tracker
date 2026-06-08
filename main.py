@@ -29,9 +29,9 @@ def main():
 
     app = QApplication(sys.argv)
 
-    # 启动时根据 debug_mode 做一次初始化：关闭调试时清空历史调试图
+    # 启动时根据 save_debug_images 做一次初始化：关闭保存图片时清空历史调试图
     debug_manager = get_debug_image_manager(BASE_DIR)
-    debug_manager.bootstrap(settings.DEBUG_MODE)
+    debug_manager.bootstrap(settings.SAVE_DEBUG_IMAGES)
 
     # 设置一个明确的应用程序字体，避免 Qt 在内部使用无效的 pointSize (-1)
     try:

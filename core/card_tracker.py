@@ -28,6 +28,7 @@ class CardTracker:
         self.remain_cards = TOTAL_CARDS.copy()
         self.no_target_time = time.time()
         self.debug_manager = get_debug_image_manager(BASE_DIR)
+        self._last_yolo_ms = 0.0
 
     def reset(self): # 重置记牌器
         self.state = WAIT_BEGIN
@@ -51,7 +52,7 @@ class CardTracker:
          - 如果地主牌都没有检测到，就说明这一帧没有有效信息，不更新状态和牌的信息，也不重置 no_target_time。
          - 如果检测到了地主牌，就更新状态和牌的信息，并重置 no_target_time。
         """
-        player_hand, player_played, opponent_left, opponent_right, landlord_cards = self.card_detector.detect()
+        player_hand, player_played, opponent_left, opponent_right, landlord_cards, self._last_yolo_ms = self.card_detector.detect()
         tot_len = len(landlord_cards)
         # 这里以地主牌的检测结果为准，如果地主牌都没有检测到，就说明这一帧没有有效信息，不更新状态和牌的信息，也不重置 no_target_time。
         if tot_len == 0:
@@ -107,7 +108,7 @@ class CardTracker:
 
         if self.state == WAIT_BEGIN:
             if self.__check_card(self.landlord_cards):  # 检测到地主的底牌, 开始游戏
-                if settings.DEBUG_MODE:
+                if settings.SAVE_DEBUG_IMAGES:
                     self.debug_manager.start_new_game()
                 self.state = HAS_STARTED
 
@@ -170,7 +171,7 @@ class CardTracker:
         if tme - self.no_target_time > settings.RESET_TIME:
             self.reset()
             self.no_target_time = tme
-        return self.remain_cards, self.show_left_cards, self.show_right_cards, self.show_self_cards
+        return self.remain_cards, self.show_left_cards, self.show_right_cards, self.show_self_cards, self._last_yolo_ms
 
 
 

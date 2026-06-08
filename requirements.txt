@@ -2,7 +2,7 @@ ultralytics==8.4.6
 torch==2.5.1+cu121
 torchvision==0.20.1+cu121
 torchaudio==2.5.1+cu121
-onnxruntime==1.22.0
+onnxruntime==1.26.0
 opencv-python==4.13.0.90
 numpy==2.4.1
 pillow==12.1.0
@@ -11,3 +11,4 @@ requests==2.32.5
 PySide6==6.10.1
 PySide6_Addons==6.10.1
 PySide6_Essentials==6.10.1
+pywin32

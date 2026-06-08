@@ -223,6 +223,12 @@ FRAME_LENGTH = config.get('frame_length', 3)
 
 DEBUG_MODE = config.get('debug_mode', True)
 
+# 是否保存调试图片（与调试模式分开控制）
+SAVE_DEBUG_IMAGES = config.get('save_debug_images', False)
+
+# 是否在标题栏显示推理耗时和整轮耗时
+SHOW_TIMING = config.get('show_timing', True)
+
 # ==================== 设备选择配置 ====================
 # 设备选择选项: "cpu" (使用CPU), "cuda" (使用GPU)
 DEVICE_CHOICE = config.get('device_choice', 'cuda')
@@ -464,6 +470,60 @@ def save_debug_mode(debug_mode):
         print(f"调试模式已保存到文件: {debug_mode}")
     except Exception as e:
         print(f"保存调试模式失败: {e}")
+
+def save_debug_images_choice(save_debug_images):
+    """
+    保存是否保存调试图片到config.yaml文件
+    save_debug_images: 是否保存调试图片（True/False）
+    """
+    global SAVE_DEBUG_IMAGES
+    try:
+        cfg = {}
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+        except Exception:
+            cfg = {}
+
+        cfg['save_debug_images'] = save_debug_images
+        tmp_path = CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, CONFIG_PATH)
+
+        SAVE_DEBUG_IMAGES = save_debug_images
+        print(f"保存调试图片设置已保存: {save_debug_images}")
+    except Exception as e:
+        print(f"保存调试图片设置失败: {e}")
+
+def save_show_timing_choice(show_timing):
+    """
+    保存是否显示耗时到config.yaml文件
+    show_timing: 是否显示耗时（True/False）
+    """
+    global SHOW_TIMING
+    try:
+        cfg = {}
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+        except Exception:
+            cfg = {}
+
+        cfg['show_timing'] = show_timing
+        tmp_path = CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, CONFIG_PATH)
+
+        SHOW_TIMING = show_timing
+        print(f"显示耗时设置已保存: {show_timing}")
+    except Exception as e:
+        print(f"保存显示耗时设置失败: {e}")
 
 def save_current_layout(layout_name):
     """

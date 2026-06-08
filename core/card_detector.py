@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 from ultralytics import YOLO
 import config.settings as settings
@@ -319,6 +320,9 @@ class CardDetector:
     # ================= 执行一次识别 =================
     def __perform_yolo_recognition(self):
         img = self.screen_capture.capture_window()
+
+        # 仅计时 YOLO 推理部分
+        t0 = time.perf_counter()
         results = self.model(
             img,
             conf=self.yolo_conf,
@@ -327,8 +331,10 @@ class CardDetector:
             verbose=False,
             half=(self.device == "cuda"),
         )
+        yolo_ms = (time.perf_counter() - t0) * 1000
 
-        if settings.DEBUG_MODE and img is not None and results:
+        # 图片保存在计时之外，不影响推理耗时统计
+        if settings.SAVE_DEBUG_IMAGES and img is not None and results:
             try:
                 yolo_bgr = results[0].plot()
                 yolo_rgb = yolo_bgr[:, :, ::-1]
@@ -338,7 +344,7 @@ class CardDetector:
                 # 调试图片保存失败不影响主流程
                 pass
 
-        return results
+        return results, yolo_ms
 
     def __trans_yolo_to_card(self, r): # yolo 标签转为扑克牌点数
         res = []
@@ -349,13 +355,13 @@ class CardDetector:
         return res
 
     def detect(self):
-        r = self.__perform_yolo_recognition()
+        r, yolo_ms = self.__perform_yolo_recognition()
         r1, r2, r3, r4, r5 = self.parse_result(r[0])
         player_hand = self.__trans_yolo_to_card(r1)
         player_played = self.__trans_yolo_to_card(r2)
         opponent_left = self.__trans_yolo_to_card(r3)
         opponent_right = self.__trans_yolo_to_card(r4)
         landlord_cards = self.__trans_yolo_to_card(r5)
-        return player_hand, player_played, opponent_left, opponent_right, landlord_cards
+        return player_hand, player_played, opponent_left, opponent_right, landlord_cards, yolo_ms
 
 
