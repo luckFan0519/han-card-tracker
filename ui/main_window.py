@@ -261,6 +261,8 @@ class CardUI(QMainWindow):
             on_debug_mode_change_callback=self.on_debug_mode_changed,
             on_layout_editor_callback=self.on_layout_editor_clicked,
             on_layout_delete_callback=self.on_layout_delete_clicked,
+            on_model_change_callback=self.on_model_changed,
+            on_confidence_change_callback=self.on_confidence_changed,
         )
 
         # 设置当前值
@@ -292,6 +294,14 @@ class CardUI(QMainWindow):
         # 设置当前调试模式
         from config.settings import DEBUG_MODE
         dialog.set_current_debug_mode(DEBUG_MODE)
+
+        # 设置当前模型选择
+        from config.settings import YOLO_MODEL_NAME
+        dialog.set_current_model(YOLO_MODEL_NAME)
+
+        # 设置当前置信度阈值
+        from config.settings import YOLO_CONFIDENCE_THRESHOLD
+        dialog.set_current_confidence(YOLO_CONFIDENCE_THRESHOLD)
 
         try:
             dialog.exec()
@@ -660,6 +670,29 @@ class CardUI(QMainWindow):
 
         # 提示用户需要重启程序才能生效
         print(f"[UI] 设备选择已更新为: {device_choice}，请重启程序以应用更改")
+
+    def on_model_changed(self, index):
+        """YOLO 模型选择改变时调用。"""
+        from config.settings import _scan_model_dirs, save_model_choice
+
+        model_dirs = _scan_model_dirs()
+        if 0 <= index < len(model_dirs):
+            model_name = model_dirs[index]
+        else:
+            return
+
+        save_model_choice(model_name)
+        print(f"[UI] 模型选择已更新为: {model_name}，请重启程序以应用更改")
+
+    def on_confidence_changed(self, index):
+        """YOLO 置信度阈值改变时调用。"""
+        from config.settings import save_confidence_choice
+
+        CONFIDENCE_VALUES = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+        if 0 <= index < len(CONFIDENCE_VALUES):
+            confidence = CONFIDENCE_VALUES[index]
+            save_confidence_choice(confidence)
+            print(f"[UI] 置信度阈值已更新为: {confidence}，请重启程序以应用更改")
 
     def on_reset_time_changed(self, index):
         """

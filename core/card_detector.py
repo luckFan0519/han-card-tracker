@@ -30,10 +30,10 @@ class CardDetector:
         self.layout_config = settings.WINDOW_LAYOUTS[layout_name]
         self.window_title = self.layout_config["window_title"]
         self.screen_capture = ScreenCapture(self.window_title)
-        self.model, self.device = self.__load_model() # 自动加载模型
+        self.model, self.device = self.__load_model()
         self.debug_manager = get_debug_image_manager(BASE_DIR)
 
-    # ================= 选择设备 =================
+    # ================= 选择设备与推理引擎 =================
     def __load_model(self):
         if not os.path.exists(self.weight_path):
             raise FileNotFoundError(
@@ -41,27 +41,92 @@ class CardDetector:
                 f"请确认打包时包含 yolo/weights/best.pt。"
             )
 
-        model = YOLO(self.weight_path)
-        
-        # 根据用户设置选择设备
         device_choice = settings.DEVICE_CHOICE
         print(f"[CardDetector] 当前设备选择: {device_choice}")
-        
-        if device_choice == "cuda":
-            # 使用GPU
-            if torch.cuda.is_available():
-                model.to("cuda")
-                print("[CardDetector] 使用GPU (CUDA)")
+
+        # 确定实际可用设备
+        use_gpu = device_choice == "cuda" and torch.cuda.is_available()
+        if device_choice == "cuda" and not use_gpu:
+            print("[CardDetector] 警告: 用户选择了GPU，但CUDA不可用，回退到CPU")
+
+        # 导出目录与权重同目录
+        weights_dir = os.path.dirname(self.weight_path)
+
+        if use_gpu:
+            # GPU 场景：优先使用 TensorRT + FP16
+            engine_path = os.path.join(weights_dir, "best.engine")
+            model = self.__load_tensorrt(engine_path)
+            if model is not None:
                 return model, "cuda"
-            else:
-                print("[CardDetector] 警告: 用户选择了GPU，但CUDA不可用，使用CPU")
-                model.to("cpu")
-                return model, "cpu"
+            # TensorRT 不可用，回退到 PyTorch CUDA + FP16
+            print("[CardDetector] TensorRT 不可用，使用 PyTorch CUDA + FP16")
+            model = YOLO(self.weight_path)
+            model.to("cuda")
+            return model, "cuda"
         else:
-            # 使用CPU
+            # CPU 场景：优先使用 ONNX Runtime
+            onnx_path = os.path.join(weights_dir, "best.onnx")
+            model = self.__load_onnx(onnx_path)
+            if model is not None:
+                return model, "cpu"
+            # ONNX Runtime 不可用，回退到 PyTorch CPU
+            print("[CardDetector] ONNX Runtime 不可用，使用 PyTorch CPU")
+            model = YOLO(self.weight_path)
             model.to("cpu")
-            print("[CardDetector] 使用CPU")
             return model, "cpu"
+
+    def __load_tensorrt(self, engine_path: str):
+        """加载 TensorRT 引擎，不存在则自动从 .pt 导出。"""
+        try:
+            # 检查 tensorrt 是否已安装
+            import tensorrt  # noqa: F401
+        except ImportError:
+            print("[CardDetector] 未安装 tensorrt，跳过 TensorRT 加速")
+            return None
+
+        if os.path.exists(engine_path):
+            print(f"[CardDetector] 加载已有 TensorRT 引擎: {engine_path}")
+            try:
+                return YOLO(engine_path)
+            except Exception as e:
+                print(f"[CardDetector] 加载 TensorRT 引擎失败: {e}，将重新导出")
+
+        # 自动导出 TensorRT 引擎（FP16）
+        print("[CardDetector] 正在导出 TensorRT 引擎（FP16），首次导出可能需要几分钟...")
+        try:
+            pt_model = YOLO(self.weight_path)
+            pt_model.export(format="engine", half=True)
+            print(f"[CardDetector] TensorRT 引擎导出完成: {engine_path}")
+            return YOLO(engine_path)
+        except Exception as e:
+            print(f"[CardDetector] TensorRT 导出失败: {e}")
+            return None
+
+    def __load_onnx(self, onnx_path: str):
+        """加载 ONNX 模型，不存在则自动从 .pt 导出。"""
+        try:
+            import onnxruntime  # noqa: F401
+        except ImportError:
+            print("[CardDetector] 未安装 onnxruntime，跳过 ONNX Runtime 加速")
+            return None
+
+        if os.path.exists(onnx_path):
+            print(f"[CardDetector] 加载已有 ONNX 模型: {onnx_path}")
+            try:
+                return YOLO(onnx_path)
+            except Exception as e:
+                print(f"[CardDetector] 加载 ONNX 模型失败: {e}，将重新导出")
+
+        # 自动导出 ONNX
+        print("[CardDetector] 正在导出 ONNX 模型，首次导出可能需要几十秒...")
+        try:
+            pt_model = YOLO(self.weight_path)
+            pt_model.export(format="onnx")
+            print(f"[CardDetector] ONNX 模型导出完成: {onnx_path}")
+            return YOLO(onnx_path)
+        except Exception as e:
+            print(f"[CardDetector] ONNX 导出失败: {e}")
+            return None
 
 
 
@@ -260,6 +325,7 @@ class CardDetector:
             iou=self.yolo_iou,
             device=self.device,
             verbose=False,
+            half=(self.device == "cuda"),
         )
 
         if settings.DEBUG_MODE and img is not None and results:

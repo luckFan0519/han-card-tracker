@@ -177,7 +177,7 @@ class CardTracker:
 
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # 独立调试脚本，不参与主程序运行
     tracker = CardTracker()
     debug_pic_id = 0
     print("start")
@@ -197,4 +197,4 @@ if __name__ == '__main__':
             print(show_self)
             print(tracker.landlord_cards[-1])
             print()
-        time.sleep(0.2)
+        time.sleep(0.2)  # 控制循环频率，避免无间隔连续推理占用过多 CPU

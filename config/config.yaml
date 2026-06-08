@@ -1,6 +1,6 @@
 always_on_top: true
 big_joker_shown: 🃏
-current_layout: JJ斗地主(含控件)
+current_layout: JJ斗
 debug_mode: false
 detect_interval_sec: 0.2
 device_choice: cuda
@@ -9,6 +9,34 @@ little_joker_shown: 🃟
 reset_time: 3.0
 show_played_cards: true
 window_layouts:
+  JJ斗:
+    layout:
+      landlord_cards:
+      - 0.3911290322580645
+      - 0.06152125279642058
+      - 0.5672043010752689
+      - 0.13646532438478748
+      opponent_left:
+      - 0.13373655913978494
+      - 0.24720357941834453
+      - 0.46303763440860213
+      - 0.4664429530201342
+      opponent_right:
+      - 0.4993279569892473
+      - 0.2494407158836689
+      - 0.8252688172043011
+      - 0.4608501118568233
+      player_hand:
+      - 0.034274193548387094
+      - 0.7069351230425056
+      - 0.9522849462365591
+      - 0.8646532438478747
+      player_played:
+      - 0.07862903225806452
+      - 0.4742729306487696
+      - 0.9563172043010753
+      - 0.6633109619686801
+    window_title: JJ斗地主
   JJ斗地主(全屏):
     layout:
       landlord_cards:
@@ -67,6 +95,7 @@ window_layouts:
     window_title: JJ斗地主
 yolo_confidence_threshold: 0.6
 yolo_iou_threshold: 0.45
+yolo_model_name: yolov11m_imgsz_960
 yolo_to_card_mapping:
   A: A
   J: J

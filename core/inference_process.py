@@ -17,6 +17,7 @@
   - "detect"                → 执行一次识别
   - "reset"                 → 重置记牌器状态
   - ("switch_layout", name) → 切换布局（重建 CardTracker）
+  - ("switch_model", name)  → 切换模型（重建 CardTracker，重启生效）
   - ("touch_time",)         → 刷新 no_target_time
   - None                    → 终止子进程
 
@@ -81,6 +82,17 @@ def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: st
                 tracker = CardTracker(new_layout)
             except Exception:
                 result_queue.put(("error", f"切换布局失败: {traceback.format_exc()}"))
+
+        # 切换模型（需要重建 CardTracker 以加载新模型）
+        elif isinstance(cmd, tuple) and cmd[0] == "switch_model":
+            model_name = cmd[1]
+            try:
+                import config.settings as s
+                s.YOLO_MODEL_NAME = model_name
+                s.YOLO_MODEL_PATH = s._resolve_model_path(model_name)
+                tracker = CardTracker(tracker.layout_name)
+            except Exception:
+                result_queue.put(("error", f"切换模型失败: {traceback.format_exc()}"))
 
         # 刷新超时计时
         elif isinstance(cmd, tuple) and cmd[0] == "touch_time":
@@ -177,6 +189,13 @@ class InferenceWorker(QObject):
         self._layout_name = layout_name
         try:
             self._cmd_queue.put(("switch_layout", layout_name), timeout=0.5)
+        except (OSError, queue.Full):
+            pass
+
+    def switch_model(self, model_name: str):
+        """请求子进程切换模型。"""
+        try:
+            self._cmd_queue.put(("switch_model", model_name), timeout=0.5)
         except (OSError, queue.Full):
             pass
 

@@ -44,8 +44,34 @@ def _resolve_resource_dir() -> str:
 RESOURCE_DIR = _resolve_resource_dir()
 CONFIG_PATH = os.path.join(BASE_DIR, 'config', 'config.yaml')
 DEFAULT_CONFIG_PATH = os.path.join(RESOURCE_DIR, 'config', 'config.yaml')
-YOLO_MODEL_PATH = os.path.join(RESOURCE_DIR, 'yolo', 'weights', 'best.pt')
+YOLO_WEIGHTS_DIR = os.path.join(RESOURCE_DIR, 'yolo', 'weights')
 QSS_PATH = os.path.join(RESOURCE_DIR, 'ui', 'ui.qss')
+
+
+def _scan_model_dirs() -> list[str]:
+    """扫描 yolo/weights/ 下的子目录，返回包含 best.pt 的子目录名列表。"""
+    dirs = []
+    if not os.path.isdir(YOLO_WEIGHTS_DIR):
+        return dirs
+    for name in sorted(os.listdir(YOLO_WEIGHTS_DIR)):
+        sub = os.path.join(YOLO_WEIGHTS_DIR, name)
+        if os.path.isdir(sub) and os.path.isfile(os.path.join(sub, 'best.pt')):
+            dirs.append(name)
+    return dirs
+
+
+def _resolve_model_path(model_name: str | None) -> str:
+    """根据模型名称解析 best.pt 的完整路径。
+
+    - model_name 为子目录名 → yolo/weights/<model_name>/best.pt
+    - model_name 为 None → 使用第一个可用子目录的 best.pt
+    """
+    if model_name:
+        return os.path.join(YOLO_WEIGHTS_DIR, model_name, 'best.pt')
+    dirs = _scan_model_dirs()
+    if dirs:
+        return os.path.join(YOLO_WEIGHTS_DIR, dirs[0], 'best.pt')
+    return os.path.join(YOLO_WEIGHTS_DIR, 'best.pt')
 
 
 def _ensure_runtime_config_exists():
@@ -130,6 +156,10 @@ def load_config():
 # 加载配置
 config = load_config()
 
+# ==================== YOLO 模型选择 ====================
+YOLO_MODEL_NAME = config.get('yolo_model_name', '') or (_scan_model_dirs()[0] if _scan_model_dirs() else '')
+YOLO_MODEL_PATH = _resolve_model_path(YOLO_MODEL_NAME)
+
 # ==================== 基本配置 ====================
 RESET_TIME = config.get('reset_time', 3.5)    # 几秒识别不到扑克牌重置
 DETECT_INTERVAL_SEC = config.get('detect_interval_sec', 0.2)  # 检测间隔秒数
@@ -139,7 +169,7 @@ LITTLE_JOKER_SHOWN = config.get('little_joker_shown', "🃟")
 BIG_JOKER_SHOWN = config.get('big_joker_shown', "🃏")
 
 # ==================== YOLO模型配置 ====================
-YOLO_CONFIDENCE_THRESHOLD = config.get('yolo_confidence_threshold', 0.6)
+YOLO_CONFIDENCE_THRESHOLD = config.get('yolo_confidence_threshold', 0.6)  # YOLO 置信度阈值
 YOLO_IOU_THRESHOLD = config.get('yolo_iou_threshold', 0.45)
 
 # ==================== YOLO类别映射配置 ====================
@@ -231,6 +261,59 @@ def save_device_choice(device_choice):
         print(f"请重启程序以应用更改")
     except Exception as e:
         print(f"保存设备选择失败: {e}")
+
+def save_model_choice(model_name: str):
+    """保存 YOLO 模型选择到 config.yaml。
+
+    model_name: 子目录名（如 "yolov10.1"）
+    """
+    global YOLO_MODEL_NAME, YOLO_MODEL_PATH
+    try:
+        cfg = {}
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+        except Exception:
+            cfg = {}
+
+        cfg['yolo_model_name'] = model_name
+        tmp_path = CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, CONFIG_PATH)
+
+        YOLO_MODEL_NAME = model_name
+        YOLO_MODEL_PATH = _resolve_model_path(model_name)
+        print(f"模型选择已保存到文件: {model_name}")
+        print(f"请重启程序以应用更改")
+    except Exception as e:
+        print(f"保存模型选择失败: {e}")
+
+def save_confidence_choice(confidence: float):
+    """保存 YOLO 置信度阈值到 config.yaml。"""
+    global YOLO_CONFIDENCE_THRESHOLD
+    try:
+        cfg = {}
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+        except Exception:
+            cfg = {}
+
+        cfg['yolo_confidence_threshold'] = confidence
+        tmp_path = CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, CONFIG_PATH)
+
+        YOLO_CONFIDENCE_THRESHOLD = confidence
+        print(f"置信度阈值已保存: {confidence}，请重启程序以应用更改")
+    except Exception as e:
+        print(f"保存置信度阈值失败: {e}")
 
 def save_reset_time(reset_time):
     """

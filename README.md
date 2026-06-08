@@ -230,7 +230,6 @@ A: 将 `other_YOLO_weights/` 目录中的模型文件复制到 `yolo/weights/bes
 ## 开发计划
 
 - [ ] 添加牌型分析功能
-- [ ] 使用mnn加速推理
 - [ ] 美化用户界面
 - [ ] 添加出牌提示功能
 - [ ] 支持Linux和macOS

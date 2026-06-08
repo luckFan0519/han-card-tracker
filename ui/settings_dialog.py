@@ -97,6 +97,8 @@ class SettingsDialog(QDialog):
         on_debug_mode_change_callback=None,
         on_layout_editor_callback=None,
         on_layout_delete_callback=None,
+        on_model_change_callback=None,
+        on_confidence_change_callback=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("设置")
@@ -113,6 +115,8 @@ class SettingsDialog(QDialog):
         self.on_debug_mode_change_callback = on_debug_mode_change_callback
         self.on_layout_editor_callback = on_layout_editor_callback
         self.on_layout_delete_callback = on_layout_delete_callback
+        self.on_model_change_callback = on_model_change_callback
+        self.on_confidence_change_callback = on_confidence_change_callback
 
         # 创建标签页控件
         self.tab_widget = QTabWidget(self)
@@ -163,7 +167,7 @@ class SettingsDialog(QDialog):
         layout.setSpacing(self.PAGE_SPACING)
         return layout
 
-    def _add_combo_row(self, parent_layout: QVBoxLayout, label_text: str, combo_name: str, items, callback):
+    def _add_combo_row(self, parent_layout: QVBoxLayout, label_text: str, combo_name: str, items, callback, tooltip: str = ""):
         row = QHBoxLayout()
         label = QLabel(label_text)
         label.setMinimumWidth(self.LABEL_MIN_WIDTH)
@@ -174,18 +178,23 @@ class SettingsDialog(QDialog):
         combo.currentIndexChanged.connect(callback)
 
         row.addWidget(label)
+
+        if tooltip:
+            help_label = QLabel("?")
+            help_label.setFixedSize(16, 16)
+            help_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            help_label.setStyleSheet(
+                "QLabel { color: #999; font-size: 12px; font-weight: bold; "
+                "border: 1px solid #bbb; border-radius: 8px; }"
+                "QLabel:hover { color: #333; border-color: #666; }"
+            )
+            help_label.setToolTip(tooltip)
+            row.addWidget(help_label)
+
         row.addWidget(combo)
         row.addStretch()
         parent_layout.addLayout(row)
         return combo
-
-    def _add_desc_row(self, parent_layout: QVBoxLayout, text: str):
-        desc_layout = QHBoxLayout()
-        desc_label = QLabel(text)
-        desc_label.setStyleSheet("color: #666; font-size: 11px;")
-        desc_layout.addSpacing(self.LABEL_MIN_WIDTH)
-        desc_layout.addWidget(desc_label)
-        parent_layout.addLayout(desc_layout)
 
     def _setup_basic_settings(self):
         """在基本设置标签页中添加控件。"""
@@ -269,15 +278,36 @@ class SettingsDialog(QDialog):
         """在高级设置标签页中添加控件。"""
         advanced_layout = self._new_page_layout(self.tab2)
 
+        # 模型选择（放在最上面）
+        from config.settings import _scan_model_dirs, YOLO_MODEL_NAME
+        model_dirs = _scan_model_dirs()
+        self.combo_model = self._add_combo_row(
+            advanced_layout,
+            "YOLO 模型(重启生效)：",
+            "ModelCombo",
+            model_dirs,
+            self._on_model_changed,
+            tooltip="选择 YOLO 推理模型，将 yolo/weights/ 下的子文件夹放入 best.pt 即可识别",
+        )
+
+        self.combo_confidence = self._add_combo_row(
+            advanced_layout,
+            "置信度阈值(重启生效)：",
+            "ConfidenceCombo",
+            ["0.3", "0.4", "0.5", "0.6", "0.7", "0.8"],
+            self._on_confidence_changed,
+            tooltip="YOLO 检测置信度阈值，越低识别越多但可能误检，越高越准确但可能漏检",
+        )
+
         self.combo_interval = self._add_combo_row(
             advanced_layout,
             "检测间隔：",
             "IntervalCombo",
             ["0.1秒", "0.15秒", "0.2秒", "0.25秒", "0.3秒", "0.35秒", "0.4秒", "0.45秒", "0.5秒"],
             self._on_interval_changed,
+            tooltip="每次检测屏幕的时间间隔，越小检测越快，但占用资源越多",
         )
         self._set_combo_current_safely(self.combo_interval, 1)
-        self._add_desc_row(advanced_layout, "每次检测屏幕的时间间隔，越小检测越快，但占用资源越多")
 
         self.combo_reset_time = self._add_combo_row(
             advanced_layout,
@@ -285,8 +315,8 @@ class SettingsDialog(QDialog):
             "ResetTimeCombo",
             ["1.0秒", "1.5秒", "2.0秒", "2.5秒", "3.0秒", "3.5秒", "4.0秒", "4.5秒", "5.0秒"],
             self._on_reset_time_changed,
+            tooltip="多久没有检测到地主底牌，就自动重置计牌器",
         )
-        self._add_desc_row(advanced_layout, "多久没有检测到地主底牌，就自动重置计牌器")
 
         self.combo_frame_length = self._add_combo_row(
             advanced_layout,
@@ -294,8 +324,8 @@ class SettingsDialog(QDialog):
             "FrameLengthCombo",
             ["1", "2", "3", "4", "5", "6"],
             self._on_frame_length_changed,
+            tooltip="连续多少帧检测相同内容才确认，避免误检",
         )
-        self._add_desc_row(advanced_layout, "连续多少帧检测相同内容才确认，避免误检")
 
         advanced_layout.addStretch()
 
@@ -385,6 +415,16 @@ class SettingsDialog(QDialog):
         """
         if self.on_debug_mode_change_callback:
             self.on_debug_mode_change_callback(index)
+
+    def _on_model_changed(self, index):
+        """模型选择改变事件。"""
+        if self.on_model_change_callback:
+            self.on_model_change_callback(index)
+
+    def _on_confidence_changed(self, index):
+        """置信度阈值改变事件。"""
+        if self.on_confidence_change_callback:
+            self.on_confidence_change_callback(index)
 
     def _on_layout_editor_clicked(self):
         """打开可视化布局编辑器。"""
@@ -513,6 +553,36 @@ class SettingsDialog(QDialog):
         debug_mode_text = "是" if debug_mode else "否"
         index = self.combo_debug_mode.findText(debug_mode_text)
         self._set_combo_current_safely(self.combo_debug_mode, index)
+
+    def set_current_model(self, model_name: str):
+        """设置当前 YOLO 模型选择。"""
+        if not model_name:
+            return
+        index = self.combo_model.findText(model_name)
+        self._set_combo_current_safely(self.combo_model, index)
+
+    def set_current_confidence(self, confidence: float):
+        """设置当前 YOLO 置信度阈值。"""
+        text = str(confidence)
+        index = self.combo_confidence.findText(text)
+        if index < 0:
+            # 找最接近的
+            values = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+            closest = min(values, key=lambda v: abs(v - confidence))
+            index = self.combo_confidence.findText(str(closest))
+        self._set_combo_current_safely(self.combo_confidence, index)
+
+    def refresh_model_list(self, selected_name=None):
+        """刷新模型下拉列表。"""
+        from config.settings import _scan_model_dirs
+
+        model_dirs = _scan_model_dirs()
+        self._set_combo_items(self.combo_model, model_dirs, default_index=0)
+        target = selected_name or (model_dirs[0] if model_dirs else None)
+        if target:
+            idx = self.combo_model.findText(target)
+            if idx >= 0:
+                self._set_combo_current_safely(self.combo_model, idx)
 
     def _setup_about_settings(self):
         """
