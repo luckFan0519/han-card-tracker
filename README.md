@@ -55,16 +55,28 @@ pip install -r requirements.txt
 
 默认模型文件已包含在 `yolo/weights/best.pt`，无需额外下载。
 
-项目提供了多个预训练模型供选择，位于 `other_YOLO_weights/` 目录：
+项目提供了多个预训练模型，位于 `yolo/weights/` 下的子目录中：
 
+```
+yolo/weights/
+├── yolov11n_imgsz_960/         # YOLOv11n 模型
+│   ├── best.pt
+│   └── best.onnx
+├── yolov11s_imgsz_960/         # YOLOv11s 模型
+│   ├── best.pt
+│   └── best.onnx
+└── yolov11m_imgsz_960/         # YOLOv11m 模型
+    ├── best.pt
+    └── best.onnx
+```
 
 **更换模型方法：**
 
-将选中的模型文件复制到 `yolo/weights/best.pt` 覆盖默认模型即可。
+在设置 → 高级设置 → YOLO 模型 中直接选择即可，无需手动复制文件。
 
 **训练自己的模型：**
 
-如果需要训练自己的YOLO模型用于检测，可联系作者获取作者的训练数据。
+如果需要训练自己的YOLO模型用于检测，作者的训练数据已发布在Releases中。将训练好的模型放入 `yolo/weights/` 下的新建子目录中（只需 `best.pt`，无需 `best.onnx`），重启后即可在设置中识别并选择。
 
 ## 使用方法
 
@@ -170,6 +182,7 @@ ddz_cards_tracker_8/
 ├── core/
 │   ├── card_tracker.py         # 记牌逻辑（状态机）
 │   ├── card_detector.py        # YOLO检测器
+│   ├── inference_process.py    # 多进程推理（子进程运行YOLO，避免UI卡顿）
 │   ├── debug_image_manager.py  # 调试截图管理（按局保存/清理）
 │   └── screen_capture.py       # 窗口截图
 ├── debug_img/                  # 调试截图输出目录（运行时生成）
@@ -178,19 +191,27 @@ ddz_cards_tracker_8/
 │   └── yolo/
 │       └── game_1/             # YOLO标注图：与 row 同名同帧
 ├── ui/
-│   ├── main_window.py          # 主窗口UI
+│   ├── card_ui.py              # CardUI 主窗口类
+│   ├── main_window.py          # 主窗口逻辑
 │   ├── settings_dialog.py      # 设置对话框
+│   ├── layout_editor_dialog.py # 可视化布局编辑器
 │   ├── styles.py               # 样式加载
 │   └── ui.qss                  # QSS样式
 ├── utils/
-│   └── trans_yolo_names_to_string.py  # 牌名转换
-├── other_YOLO_weights/         # 其他预训练模型
-│   ├── yolov11n_imgsz=960/
-│   ├── yolov11s_imgsz=960/
-│   └── yolov11m_imgsz=960/
+│   ├── trans_yolo_names_to_string.py  # 牌名转换
+│   ├── add_layout/                    # 命令行布局工具
+│   │   ├── draw_layout.py
+│   │   ├── list_windows.py
+│   │   └── screen_capture.py
+│   └── layout_editor/                 # 布局编辑器核心逻辑
+│       ├── coord.py
+│       ├── service.py
+│       └── validator.py
 └── yolo/
     └── weights/
-        └── best.pt             # 当前使用的YOLO模型权重
+        ├── yolov11n_imgsz_960/ # YOLOv11n 模型
+        ├── yolov11s_imgsz_960/ # YOLOv11s 模型
+        └── yolov11m_imgsz_960/ # YOLOv11m 模型
 ```
 
 ## 工作原理
@@ -232,7 +253,7 @@ A: 需要添加新的窗口布局配置：
 
 ### Q: 如何更换YOLO模型？
 
-A: 将 `other_YOLO_weights/` 目录中的模型文件复制到 `yolo/weights/best.pt` 即可。
+A: 在设置 → 高级设置 → YOLO 模型 中直接选择即可，也可将自定义模型放入 `yolo/weights/` 下的子目录中（需包含 `best.pt`），重启后即可在下拉框中看到。
 
 ## 开发计划
 
