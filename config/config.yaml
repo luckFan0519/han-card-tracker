@@ -1,7 +1,7 @@
 always_on_top: true
 big_joker_shown: 🃏
 current_layout: JJ斗地主(含控件)
-debug_mode: true
+debug_mode: false
 detect_interval_sec: 0.2
 device_choice: cuda
 frame_length: 3
