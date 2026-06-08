@@ -2,13 +2,16 @@
 
 ## 1) 先看什么（最快进入状态）
 - 入口是 `main.py`：创建 `QApplication`、加载 `ui/ui.qss`、启动 `CardUI`。
-- 业务主链路是 `ui/main_window.py` -> `core/card_tracker.py` -> `core/card_detector.py` -> `core/screen_capture.py`。
+- 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/card_tracker.py` -> `core/card_detector.py` -> `core/screen_capture.py`。
 - 配置集中在 `config/settings.py`（运行时常量 + 保存函数）与 `config/config.yaml`（可编辑参数）。
 - 现有 AI 规范文件仅发现 `README.md`，未发现 `.github/copilot-instructions.md` / `CLAUDE.md` / `.cursorrules` 等。
 
 ## 2) 架构与数据流（改逻辑前必须理解）
 - UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
-- 后台执行：`CardTrackerWorker` 在 `QThread` 中跑 `card_tracker.get_cards_number()`，仅通过信号回主线程更新 UI。
+- 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
+- 子进程主循环：`_inference_loop()` 在子进程中运行 `CardTracker.get_cards_number()`，通过命令队列接收指令、结果队列回传数据。
+- 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("touch_time",)` / `None`（终止）。
+- 结果协议：`("ok", (remain_cards, show_left, show_right, show_self))` / `("error", str)`。
 - 检测流水线：`CardDetector.detect()` = 截图 -> YOLO 推理 -> 按 layout 分区 -> YOLO 类名映射为牌点。
 - 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。
 - 排序不是置信度顺序：`sort_cards_by_topright_rowwise()` 先按行再按列，避免出牌串顺序错乱。
@@ -27,8 +30,10 @@
 - 修改布局时同时考虑：`config/config.yaml` 的 `window_layouts` + `current_layout`。
 - 设备切换（CPU/GPU）当前是“保存并提示重启”，不要假设可热切换模型。
 
-## 5) UI 交互与线程边界
-- 不要在 worker 线程直接操作 Qt 控件；只能发 `result_ready/error/finished` 信号。
+## 5) UI 交互与进程边界
+- 推理在独立子进程中运行，不与 UI 主进程共享 GIL，拖动/缩放窗口不会卡顿。
+- `InferenceWorker` 是主进程中的 QObject，通过轮询定时器（20ms）从结果队列读取数据，以信号形式通知 UI。
+- 不要在子进程中操作任何 Qt 对象；子进程只能通过 `result_queue` 回传纯 Python 数据。
 - 调整窗口置顶使用 `setWindowFlag` 后，会调用 `_ensure_widgets_attached()` 修复可能丢失的控件挂载。
 - 出牌记录显示由 `_show_played_cards` 控制，并通过 `_update_played_cards_visibility()` 动态挂载/隐藏布局。
 - 样式依赖动态属性：`depleted` 与 `count`，更新后需 `unpolish/polish` 触发 QSS 刷新。
@@ -54,6 +59,7 @@
 ## 8) 环境与集成边界
 
 - 当前实现依赖 Windows 截图链路（`win32gui/win32ui/win32con` + DPI aware），默认是 Windows 场景。
+- YOLO 推理在独立子进程中运行（`multiprocessing`），主进程（UI）与子进程不共享 GIL；`main.py` 必须调用 `multiprocessing.freeze_support()` 以支持 PyInstaller 打包。
 - YOLO 权重默认路径是 `yolo/weights/best.pt`；可用 `other_YOLO_weights/` 中模型手动覆盖。
 - 关键三方：`ultralytics`、`torch`、`PySide6`、`opencv-python`、`PyYAML`、`pillow`。
 - 本仓库未提供自动化测试；回归验证以真实窗口识别 + UI行为检查为主。

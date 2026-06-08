@@ -5,11 +5,11 @@
 提供斗地主记牌器的主界面，包括剩余牌统计、出牌显示等功能
 """
 
-from PySide6.QtCore import Qt, QThread, QTimer, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QWidget, QLabel, QVBoxLayout, QGridLayout, QPushButton, QHBoxLayout, QMainWindow, QSizePolicy
 )
-from core.card_tracker import CardTracker, CardTrackerWorker
+from core.inference_process import InferenceWorker
 from config.settings import TOTAL_CARDS
 from utils.trans_yolo_names_to_string import trans_yolo_names_to_string
 from ui.layout_editor_dialog import LayoutEditorDialog
@@ -30,8 +30,8 @@ class CardUI(QMainWindow):
 
     特点：
     - 使用 QGridLayout：每张牌占一列，结构最清晰；
-    - 使用后台线程 worker：避免 UI 卡顿；
-    - 定时器触发 worker 识别（按你的原逻辑：80ms 一次）；
+    - 使用多进程 worker：将 YOLO 推理放到独立子进程，彻底绕过 GIL；
+    - 定时器触发 worker 识别；
     - busy 防抖：上一轮未结束不触发下一轮。
     """
 
@@ -213,44 +213,21 @@ class CardUI(QMainWindow):
         # self._load_layout_options()
 
         # -------------------------
-        # 后台线程/worker（保持你原逻辑）
+        # 多进程推理 worker
         # -------------------------
-        self.card_tracker = CardTracker(self.layout_name)
-
-        # QThread：worker 的执行线程
-        self.worker_thread = QThread(self)
-
-        # 你的 worker：执行一次识别，然后 emit result_ready / finished
-        self.worker = CardTrackerWorker(self.card_tracker)
-
-        # 把 worker 移动到线程中（关键：让耗时任务不在主线程跑）
-        self.worker.moveToThread(self.worker_thread)
-
-        # 信号连接（保持你原逻辑）
+        self.worker = InferenceWorker(self.layout_name)
         self.worker.result_ready.connect(self.on_result_ready)
         self.worker.error.connect(self.on_worker_error)
         self.worker.finished.connect(self.on_worker_finished)
+        self.worker.start()
 
-        # 启动线程
-        self.worker_thread.start()
-
-        # 初始化定时器（在构造函数中创建，确保timer属性始终存在）
-        self._busy = False  # busy 防抖：上一轮没结束，不触发新一轮
+        # 初始化定时器
+        self._busy = False
         self.timer = QTimer(self)
-        self.timer.setInterval(int(self.detect_interval_sec * 1000))  # 将秒转换为毫秒
-        self.timer.timeout.connect(self.request_one_update) # 定义的 request_one_update 方法绑定。
-        self.timer.start() # 启动
+        self.timer.setInterval(int(self.detect_interval_sec * 1000))
+        self.timer.timeout.connect(self.request_one_update)
+        self.timer.start()
 
-        # 窗口交互（拖动/缩放）期间暂停检测，避免主线程重刷导致拖动卡顿
-        self._is_window_interacting = False
-        self._interaction_resume_delay_ms = 100
-        # 每次进入窗口交互都递增 token，用于丢弃交互前已发起但延迟返回的结果
-        self._interaction_token = 0
-        self._inflight_job_token = 0
-        self._interaction_resume_timer = QTimer(self)
-        self._interaction_resume_timer.setSingleShot(True)
-        self._interaction_resume_timer.setInterval(self._interaction_resume_delay_ms)
-        self._interaction_resume_timer.timeout.connect(self._on_window_interaction_settled)
         self._is_settings_open = False
 
         # UI 刷新缓存：仅在状态变化时更新文本/样式，减少主线程开销
@@ -262,10 +239,8 @@ class CardUI(QMainWindow):
         """
         点击设置按钮时打开设置对话框
         """
-        # 打开设置期间暂停检测，提升对话框交互流畅度
+        # 打开设置期间暂停检测
         self._is_settings_open = True
-        self._interaction_token += 1  # 使在途结果过期
-        self._is_window_interacting = True
         try:
             if hasattr(self, 'timer') and self.timer.isActive():
                 self.timer.stop()
@@ -330,7 +305,6 @@ class CardUI(QMainWindow):
                 pass
         finally:
             self._is_settings_open = False
-            self._is_window_interacting = False
             self._touch_no_target_time()
             self._start_timer_if_allowed()
 
@@ -413,10 +387,9 @@ class CardUI(QMainWindow):
         pass
 
     def _touch_no_target_time(self):
-        """刷新 no_target_time，避免暂停或交互后立即触发超时重置。"""
-        if hasattr(self, 'card_tracker'):
-            import time
-            self.card_tracker.no_target_time = time.time()
+        """通知子进程刷新 no_target_time，避免暂停或交互后立即触发超时重置。"""
+        if hasattr(self, 'worker'):
+            self.worker.touch_time()
 
     def _start_timer_if_allowed(self):
         """仅在允许检测时启动定时器。"""
@@ -433,38 +406,23 @@ class CardUI(QMainWindow):
     @Slot()
     def request_one_update(self):
         """
-        定时触发一次后台识别（保持你原逻辑）：
+        定时触发一次后台识别：
         - busy 防抖：上一轮没结束就 return
-        - QTimer.singleShot(0, ...)：
-          把调用投递到事件队列，让它在 worker 所在线程执行 do_run_once
-        - 暂停状态下不触发检测
+        - 暂停 / 设置打开状态下不触发检测
         """
-        if self._busy or self.is_paused or self._is_window_interacting or self._is_settings_open:
+        if self._busy or self.is_paused or self._is_settings_open:
             return
-        self._inflight_job_token = self._interaction_token
         self._busy = True
-
-        # 这里保持你的写法：singleShot(0, worker.do_run_once)
-        # 意图：让函数在事件循环中异步触发（不堵 UI）
-        QTimer.singleShot(0, self.worker.do_run_once)
+        self.worker.request_detect()
 
     @Slot(dict, list, list, list)
     def on_result_ready(self, remain_cards: dict, show_left: list, show_right: list, show_self: list):
         """
-        收到 worker 的识别结果（保持你原逻辑）：
-        - 只更新"剩余牌数量"
+        收到 worker 的识别结果：
+        - 更新剩余牌数量
         - v <= 0 时样式变灰
         - v > 0 时样式恢复正常
-
-        注意：
-        - 你原代码是在这里直接 setStyleSheet 覆盖样式
-        - 现在改为设置 dynamicProperty(depleted) 并强制刷新样式
-          这样 QSS 仍然可以做到同样效果，但样式集中在 style.qss
         """
-        # 交互期间或结果已过期时，直接丢弃在途结果，避免拖动开始瞬间卡顿
-        if self._is_window_interacting or self._inflight_job_token != self._interaction_token:
-            return
-
         # 更新出牌文本（仅在内容变化时更新）
         played_signature = (
             tuple(tuple(x) if isinstance(x, list) else x for x in show_left),
@@ -504,44 +462,6 @@ class CardUI(QMainWindow):
 
                 self.count_labels[card].style().unpolish(self.count_labels[card])
                 self.count_labels[card].style().polish(self.count_labels[card])
-
-    def _mark_window_interaction(self):
-        """
-        标记窗口正在交互（拖动/缩放），并延后恢复检测。
-        连续收到事件时会不断重置恢复计时器，直到窗口稳定。
-        """
-        if not self._is_window_interacting:
-            self._interaction_token += 1
-        self._is_window_interacting = True
-        try:
-            if hasattr(self, 'timer') and self.timer.isActive():
-                self.timer.stop()
-        except Exception:
-            pass
-        self._interaction_resume_timer.start(self._interaction_resume_delay_ms)
-
-    @Slot()
-    def _on_window_interaction_settled(self):
-        """窗口稳定后恢复检测（手动暂停时不恢复）。"""
-        self._is_window_interacting = False
-        self._touch_no_target_time()
-        self._start_timer_if_allowed()
-
-    def moveEvent(self, event):
-        # 拖动窗口时先暂停检测，待位置稳定后再恢复
-        self._mark_window_interaction()
-        super().moveEvent(event)
-
-    def resizeEvent(self, event):
-        # 调整窗口大小时同样暂停检测，避免频繁重绘引发卡顿
-        self._mark_window_interaction()
-        super().resizeEvent(event)
-
-    def mousePressEvent(self, event):
-        # 鼠标按下时提前进入交互态，可更早停检
-        self._mark_window_interaction()
-        super().mousePressEvent(event)
-
 
     def _reset_ui_to_total(self):
         """
@@ -653,14 +573,14 @@ class CardUI(QMainWindow):
         # 1) 强制停止定时器，阻断后续识别
         self._stop_timer_if_exists()
 
-        # 2) 强制解锁 busy（即使当前在识别，也当它结束了）
+        # 2) 强制解锁 busy
         self._busy = False
 
         # 3) 立刻重置 UI（用户马上看到）
         self._reset_ui_to_total()
 
-        # 4) 把 reset 投递到 worker 所在线程执行
-        QTimer.singleShot(0, self.worker.reset)
+        # 4) 通知子进程重置记牌器
+        self.worker.request_reset()
 
         # 5) 重新启动定时器（只有在非暂停状态下才启动）
         self._start_timer_if_allowed()
@@ -689,7 +609,6 @@ class CardUI(QMainWindow):
         """
         布局配置下拉框变化时调用
         """
-        # 从设置对话框获取当前选择的布局配置
         from config.settings import WINDOW_LAYOUTS
         layout_names = list(WINDOW_LAYOUTS.keys())
         selected_layout = layout_names[index]
@@ -702,7 +621,7 @@ class CardUI(QMainWindow):
         save_current_layout(selected_layout)
         settings.CURRENT_LAYOUT = selected_layout
 
-        # 停止定时器（如果存在）
+        # 停止定时器
         if hasattr(self, 'timer'):
             self.timer.stop()
         self._busy = False
@@ -710,28 +629,10 @@ class CardUI(QMainWindow):
         # 重置 UI
         self._reset_ui_to_total()
 
-        # 重新创建 CardTracker 和 Worker
-        self.card_tracker = CardTracker(selected_layout)
+        # 通知子进程切换布局（子进程内部重建 CardTracker）
+        self.worker.switch_layout(selected_layout)
 
-        # 终止旧线程
-        if hasattr(self, 'worker_thread'):
-            self.worker_thread.quit()
-            self.worker_thread.wait(1500)
-
-        # 创建新线程和 worker
-        self.worker_thread = QThread(self)
-        self.worker = CardTrackerWorker(self.card_tracker)
-        self.worker.moveToThread(self.worker_thread)
-
-        # 重新连接信号
-        self.worker.result_ready.connect(self.on_result_ready)
-        self.worker.error.connect(self.on_worker_error)
-        self.worker.finished.connect(self.on_worker_finished)
-
-        # 启动新线程
-        self.worker_thread.start()
-
-        # 重启定时器（只有在非暂停状态下才启动）
+        # 重启定时器
         self._start_timer_if_allowed()
 
         print(f"布局配置已更新为: {selected_layout}")
@@ -969,15 +870,11 @@ class CardUI(QMainWindow):
 
     def closeEvent(self, event):
         """
-        窗口关闭时清理（保持你原逻辑）：
+        窗口关闭时清理：
         - 停止 timer
-        - 退出线程并等待（最多 1500ms）
+        - 停止子进程
         """
         self.timer.stop()
-        try:
-            self._interaction_resume_timer.stop()
-        except Exception:
-            pass
-        self.worker_thread.quit()
-        self.worker_thread.wait(1500)
+        if hasattr(self, 'worker'):
+            self.worker.stop()
         super().closeEvent(event)

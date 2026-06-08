@@ -1,4 +1,5 @@
 import sys
+import multiprocessing
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont
 from PySide6.QtCore import qInstallMessageHandler
@@ -10,11 +11,9 @@ from core.debug_image_manager import get_debug_image_manager
 
 
 def _qt_message_handler(msg_type, context, message):
-    """Filter Qt messages and suppress noisy QFont::setPointSize warnings."""
     try:
         msg = str(message)
         if 'QFont::setPointSize' in msg:
-            # drop this noisy warning
             return
     except Exception:
         pass
@@ -23,7 +22,6 @@ def _qt_message_handler(msg_type, context, message):
 
 
 def main():
-    # Install message handler early to filter Qt warnings
     try:
         qInstallMessageHandler(_qt_message_handler)
     except Exception:
@@ -38,7 +36,6 @@ def main():
     # 设置一个明确的应用程序字体，避免 Qt 在内部使用无效的 pointSize (-1)
     try:
         default_font = QFont("Microsoft YaHei", 9)
-        # also set pixel size explicitly to be robust across platforms
         default_font.setPixelSize(14)
         app.setFont(default_font)
     except Exception:
@@ -56,4 +53,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

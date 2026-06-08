@@ -1,8 +1,5 @@
-import os
-import traceback
 from core.card_detector import CardDetector
 from config.settings import WAIT_BEGIN, HAS_STARTED, STARTED_RECORD_CARD, TOTAL_CARDS
-from PySide6.QtCore import QObject, Signal, Slot
 import time
 import config.settings as settings
 from config.settings import BASE_DIR
@@ -177,46 +174,7 @@ class CardTracker:
 
 
 
-class CardTrackerWorker(QObject):
-    """
-    Worker 是一个 QObject，放到 QThread 里运行。
-    它暴露一个槽函数 do_run_once()，用于执行 tracker.run()。
 
-    执行成功/失败都通过信号发回主线程。
-    """
-
-    # 成功信号：把 tracker.run() 的 4 个返回值发回去
-    result_ready = Signal(dict, list, list, list)
-
-    # 失败信号：把错误文本发回去
-    error = Signal(str)
-
-    # “本次任务结束”信号：用于主线程解除“忙碌状态”
-    finished = Signal()
-
-    def __init__(self, card_tracker: CardTracker):
-        super().__init__()
-        self.card_tracker = card_tracker
-        self.debug_pic_id_tmp = 0
-
-    @Slot()
-    def reset(self):
-        self.card_tracker.reset()
-
-    @Slot()
-    def do_run_once(self):
-        """
-        在后台线程执行一次 tracker.run()。
-        注意：这里不要直接操作 UI，只发信号。
-        """
-        try:
-            remain_cards, show_left, show_right, show_self = self.card_tracker.get_cards_number()
-            self.result_ready.emit(remain_cards, show_left, show_right, show_self)
-        except Exception:
-            err_text = traceback.format_exc()
-            self.error.emit(err_text)
-        finally:
-            self.finished.emit()
 
 
 if __name__ == '__main__':
