@@ -55,8 +55,8 @@
 - 修改布局时同时考虑：`config/config.yaml` 的 `window_layouts` + `current_layout`。
 - 设备切换（CPU/GPU）当前是"保存并提示重启"，不要假设可热切换模型。
 - 游戏切换当前是"保存并提示重启"，通过 `save_game_choice()` 保存到 `config.yaml` 的 `game_name` 字段。
-- 游戏配置文件位于 `config/games/` 目录，每个游戏一个 YAML 文件，包含：`total_cards`（牌组定义）、`yolo_to_card_mapping`（YOLO 类名映射）、`played_zones`（出牌区域）、`layout_regions`（布局区域）。
-- `TOTAL_CARDS`、`YOLO_TO_CARD_MAPPING`、`PLAYED_ZONES`、`LAYOUT_REGIONS` 等常量优先从游戏配置加载。
+- 游戏配置文件位于 `config/games/` 目录，每个游戏一个 YAML 文件，包含：`total_cards`（牌组定义）、`played_zones`（出牌区域）、`layout_regions`（布局区域）。`yolo_to_card_mapping` 统一在 `config.yaml` 中管理，不同游戏共用。
+- `TOTAL_CARDS`、`PLAYED_ZONES`、`LAYOUT_REGIONS` 从游戏配置加载；`YOLO_TO_CARD_MAPPING` 从 `config.yaml` 加载。
 
 ## 5) UI 交互与进程边界
 - 推理在独立子进程中运行，不与 UI 主进程共享 GIL，拖动/缩放窗口不会卡顿。

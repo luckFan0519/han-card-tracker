@@ -16,8 +16,8 @@ total_cards:
   'K': 4
   'A': 4
   '2': 4
-  'jok': 1
-  'JOK': 1
+  '小': 1
+  '大': 1
 
 # 出牌区域定义：key 为内部标识，label 为 UI 显示，region 对应 layout 中的区域键名
 played_zones:

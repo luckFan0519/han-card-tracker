@@ -73,13 +73,13 @@ yolo_model_name: yolov11s_imgsz_960
 yolo_to_card_mapping:
   A: A
   J: J
-  JOKER: JOK
+  JOKER: 大
   K: K
   Q: Q
   eight: '8'
   five: '5'
   four: '4'
-  joker: jok
+  joker: 小
   nine: '9'
   seven: '7'
   six: '6'
