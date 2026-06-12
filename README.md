@@ -53,21 +53,16 @@ pip install -r requirements.txt
 
 ### 4. YOLO模型
 
-默认模型文件已包含在 `yolo/weights/best.pt`，无需额外下载。
-
-项目提供了多个预训练模型，位于 `yolo/weights/` 下的子目录中：
+所有模型均位于 `yolo/weights/` 下的子目录中：
 
 ```
 yolo/weights/
 ├── yolov11n_imgsz_960/         # YOLOv11n 模型
-│   ├── best.pt
-│   └── best.onnx
+│   └── best.pt
 ├── yolov11s_imgsz_960/         # YOLOv11s 模型
-│   ├── best.pt
-│   └── best.onnx
+│   └── best.pt
 └── yolov11m_imgsz_960/         # YOLOv11m 模型
-    ├── best.pt
-    └── best.onnx
+    └── best.pt
 ```
 
 **更换模型方法：**
@@ -208,10 +203,13 @@ ddz_cards_tracker_8/
 │       ├── service.py
 │       └── validator.py
 └── yolo/
-    └── weights/
-        ├── yolov11n_imgsz_960/ # YOLOv11n 模型
-        ├── yolov11s_imgsz_960/ # YOLOv11s 模型
-        └── yolov11m_imgsz_960/ # YOLOv11m 模型
+    └── weights/                 # 所有模型均在子目录中
+        ├── yolov11n_imgsz_960/  # YOLOv11n 模型
+        │   └── best.pt
+        ├── yolov11s_imgsz_960/  # YOLOv11s 模型
+        │   └── best.pt
+        └── yolov11m_imgsz_960/  # YOLOv11m 模型
+            └── best.pt
 ```
 
 ## 工作原理

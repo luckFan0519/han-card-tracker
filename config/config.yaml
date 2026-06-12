@@ -69,7 +69,7 @@ window_layouts:
     window_title: JJ斗地主
 yolo_confidence_threshold: 0.6
 yolo_iou_threshold: 0.45
-yolo_model_name: yolov11m_imgsz_960
+yolo_model_name: yolov11s_imgsz_960
 yolo_to_card_mapping:
   A: A
   J: J

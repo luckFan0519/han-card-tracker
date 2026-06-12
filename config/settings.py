@@ -14,7 +14,7 @@ else:
 
 def _looks_like_resource_root(base_dir: str) -> bool:
     expected_files = (
-        ('yolo', 'weights', 'best.pt'),
+        ('yolo', 'weights'),
         ('ui', 'ui.qss'),
         ('config', 'config.yaml'),
     )
@@ -65,13 +65,14 @@ def _resolve_model_path(model_name: str | None) -> str:
 
     - model_name 为子目录名 → yolo/weights/<model_name>/best.pt
     - model_name 为 None → 使用第一个可用子目录的 best.pt
+    - 所有模型必须放在 yolo/weights/ 的子目录中。
     """
     if model_name:
         return os.path.join(YOLO_WEIGHTS_DIR, model_name, 'best.pt')
     dirs = _scan_model_dirs()
     if dirs:
         return os.path.join(YOLO_WEIGHTS_DIR, dirs[0], 'best.pt')
-    return os.path.join(YOLO_WEIGHTS_DIR, 'best.pt')
+    return os.path.join(YOLO_WEIGHTS_DIR, 'default', 'best.pt')
 
 
 def _ensure_runtime_config_exists():

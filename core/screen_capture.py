@@ -10,8 +10,6 @@ Windows 平台有效（依赖 win32gui/win32ui/win32con）。
 """
 
 import ctypes
-from typing import Optional
-
 import win32con
 import win32gui
 import win32ui
@@ -50,30 +48,23 @@ class ScreenCapture:
 
         self.window_title = window_title
 
-    def capture_window(self) -> Optional[Image.Image]:
+    def capture_window(self) -> Image.Image | None:
         """截取指定窗口的图片并以 PIL Image 返回。
 
-        本方法会按 `self.window_title` 在系统中查找窗口句柄（使用 `FindWindow`），
-        然后基于桌面设备上下文进行 BitBlt 拷贝，最终转换为 RGB 格式的 PIL Image。
+        按 ``self.window_title`` 在系统中查找窗口句柄（FindWindow），
+        基于桌面设备上下文进行 BitBlt 拷贝，转换为 RGB 格式的 PIL Image。
 
         Returns:
-            Optional[PIL.Image.Image]: 成功时返回 PIL Image；找不到窗口或发生可恢复错误
-            时返回 None。
+            Image.Image | None: 成功时返回 PIL Image；找不到窗口时返回 None。
 
         Raises:
-            TypeError: 如果内部坐标/参数类型不符合预期（通常不会出现，属于编程错误）。
-            RuntimeError: 当底层 Win32 API 调用出现不可恢复的错误时抛出。
+            RuntimeError: 底层 Win32 API 调用出现不可恢复的错误时抛出。
 
         Examples:
             >>> sc = ScreenCapture("JJ斗地主")
             >>> img = sc.capture_window()
             >>> isinstance(img, Image.Image) or img is None
             True
-
-        Notes:
-            - 返回 None 的情况：未找到窗口句柄或窗口标题填写错误；调用者应检查返回值。
-            - 大多数 Win32 API 的异常会以 OSError/WindowsError 的形式抛出，这里统一
-              说明为 RuntimeError（以便调用方捕获）。
         """
 
         # 1) 查找目标窗口句柄

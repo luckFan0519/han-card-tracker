@@ -4,7 +4,7 @@ import win32gui
 
 from config import settings
 from config.settings import save_window_layout
-from utils.add_layout.screen_capture import ScreenCapture
+from core.screen_capture import ScreenCapture
 
 
 def list_visible_window_titles() -> List[str]:

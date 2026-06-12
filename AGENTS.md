@@ -1,10 +1,32 @@
 # AGENTS 指南（han_card_tracker）
 
+**重要：每次修改代码/文件结构/配置项后，必须主动检查本文件（AGENTS.md）是否需要同步更新。** 若架构、数据流、配置项、文件路径等发生了变化，应及时修正本文件中的对应描述，确保文档始终与代码一致。
+
+## 0) AI 开发标准（写代码前必读）
+
+项目在 `AI开发标准/` 目录下维护了代码风格规范，**所有新增/修改代码必须遵守**：
+
+- **`AI开发标准/Python 代码注释规范.md`**：
+  - 所有函数/方法/类必须写 Google 风格 Docstring（中文说明 + 英文关键字：`Args / Returns / Raises / Examples / Attributes / TODO`）。
+  - 类型注解必须完整（函数参数、返回值；类属性在 `Attributes` 写明）。
+  - 异常必须在 `Raises` 中逐条写清触发条件。
+  - 示例必须可运行（`>>>` 形式）。
+  - 输入校验：类型不对抛 `TypeError`，取值/业务约束不满足抛 `ValueError`。
+
+- **`AI开发标准/Python 类型注解规范.md`**：
+  - 优先使用现代写法（Python 3.10+）：`X | Y`、`list[str]`、`dict[str, int]`。
+  - 每个函数必须标注参数类型 + 返回值类型；无返回值用 `-> None`。
+  - 可选值必须显式写出 `None`：`str | None`。
+  - 不要滥用 `Any`；能用 `TypedDict` / `Protocol` / `Mapping` 表达就不用 `Any`。
+  - 集合/序列参数优先用抽象类型：只读用 `Sequence[T]` / `Mapping[K, V]`，会修改用 `list[T]` / `dict[K, V]`。
+
+**硬性约束**：输出的每一个 `def` 都必须带 Docstring，每一个 `class` 都必须带类 Docstring 并为 `__init__` 写 Docstring。
+
 ## 1) 先看什么（最快进入状态）
 - 入口是 `main.py`：创建 `QApplication`、加载 `ui/ui.qss`、启动 `CardUI`。
 - 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/card_tracker.py` -> `core/card_detector.py` -> `core/screen_capture.py`。
 - 配置集中在 `config/settings.py`（运行时常量 + 保存函数）与 `config/config.yaml`（可编辑参数）。
-- 现有 AI 规范文件仅发现 `README.md`，未发现 `.github/copilot-instructions.md` / `CLAUDE.md` / `.cursorrules` 等。
+- AI 开发规范详见 `AI开发标准/` 目录（代码注释规范 + 类型注解规范），已在第 0 节概述。
 
 ## 2) 架构与数据流（改逻辑前必须理解）
 - UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
@@ -45,7 +67,7 @@
   - 点击"预览校验"确认区域标注正确 → "保存"写入 `config.yaml`。
   - 截图时窗口下沉/恢复通过上下文管理器 `_lowered_app_windows()` 保证资源安全释放。
   - 保存后始终切换为当前布局；设置页面提供 ↻ 刷新按钮手动刷新布局列表。
-- 命令行工具（高级/调试用）：`utils/add_layout/list_windows.py` 找窗口标题、`screen_capture.py` 截图、`draw_layout.py` 手动绘制区域。
+- 命令行工具（高级/调试用）：`utils/add_layout/list_windows.py` 找窗口标题、`draw_layout.py` 手动绘制区域。截图功能统一使用 `core/screen_capture.py`。
 - 运行主程序：`python main.py`。
 
 ## 7) 调试截图资产约定（新增逻辑）
@@ -66,6 +88,6 @@
 
 - 当前实现依赖 Windows 截图链路（`win32gui/win32ui/win32con` + DPI aware），默认是 Windows 场景。
 - YOLO 推理在独立子进程中运行（`multiprocessing`），主进程（UI）与子进程不共享 GIL；`main.py` 必须调用 `multiprocessing.freeze_support()` 以支持 PyInstaller 打包。
-- YOLO 权重默认路径是 `yolo/weights/best.pt`；可用 `other_YOLO_weights/` 中模型手动覆盖。
+- YOLO 权重在 `yolo/weights/` 目录下的子目录中（如 `yolo/weights/yolov11n_imgsz_960/best.pt`），不支持直接放在 `weights/` 下；通过设置界面切换模型。
 - 关键三方：`ultralytics`、`torch`、`PySide6`、`opencv-python`、`PyYAML`、`pillow`。
 - 本仓库未提供自动化测试；回归验证以真实窗口识别 + UI行为检查为主。

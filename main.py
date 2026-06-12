@@ -17,7 +17,6 @@ def _qt_message_handler(msg_type, context, message):
             return
     except Exception:
         pass
-    # Fallback: print other messages to stderr
     sys.__stderr__.write(str(message) + "\n")
 
 
