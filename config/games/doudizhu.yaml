@@ -19,24 +19,6 @@ total_cards:
   'jok': 1
   'JOK': 1
 
-# YOLO 类名到牌点映射
-yolo_to_card_mapping:
-  two: '2'
-  three: '3'
-  four: '4'
-  five: '5'
-  six: '6'
-  seven: '7'
-  eight: '8'
-  nine: '9'
-  ten: '10'
-  J: 'J'
-  Q: 'Q'
-  K: 'K'
-  A: 'A'
-  joker: 'jok'
-  JOKER: 'JOK'
-
 # 出牌区域定义：key 为内部标识，label 为 UI 显示，region 对应 layout 中的区域键名
 played_zones:
   - key: "left"

@@ -110,11 +110,6 @@ def _load_game_config(game_name: str) -> dict:
             '3': 4, '4': 4, '5': 4, '6': 4, '7': 4, '8': 4, '9': 4, '10': 4,
             'J': 4, 'Q': 4, 'K': 4, 'A': 4, '2': 4, 'jok': 1, 'JOK': 1,
         },
-        'yolo_to_card_mapping': {
-            'two': '2', 'three': '3', 'four': '4', 'five': '5', 'six': '6',
-            'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10',
-            'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A', 'joker': 'jok', 'JOKER': 'JOK',
-        },
         'played_zones': [
             {'key': 'left', 'label': '上家', 'region': 'opponent_left'},
             {'key': 'self', 'label': '本家', 'region': 'player_played'},
@@ -246,8 +241,8 @@ YOLO_CONFIDENCE_THRESHOLD = config.get('yolo_confidence_threshold', 0.6)  # YOLO
 YOLO_IOU_THRESHOLD = config.get('yolo_iou_threshold', 0.45)
 
 # ==================== YOLO类别映射配置 ====================
-# 优先从游戏配置加载，fallback 到 config.yaml 中的配置
-YOLO_TO_CARD_MAPPING = GAME_CONFIG.get('yolo_to_card_mapping') or config.get('yolo_to_card_mapping', {
+# 统一从 config.yaml 加载，不同游戏共用同一套 YOLO 映射
+YOLO_TO_CARD_MAPPING = config.get('yolo_to_card_mapping', {
     'two': '2',
     'three': '3',
     'four': '4',
