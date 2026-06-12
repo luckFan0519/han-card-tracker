@@ -13,7 +13,7 @@ sequenceDiagram
     participant Worker as InferenceWorker
     participant CmdQ as cmd_queue
     participant SubProc as _inference_loop (子进程)
-    participant Tracker as CardTracker
+    participant Tracker as BaseCardTracker
     participant Detector as CardDetector
     participant Capture as ScreenCapture
     participant YOLO as YOLO Model
@@ -39,18 +39,18 @@ sequenceDiagram
     Detector->>Detector: parse_result(results[0])
     Note over Detector: 按布局分区 + sort_cards_by_topright_rowwise
     Detector->>Detector: __trans_yolo_to_card()
-    Detector-->>Tracker: (player_hand, player_played, opponent_left, opponent_right, landlord_cards, yolo_ms)
+    Detector-->>Tracker: (frame_data: dict[str, list[str]], yolo_ms)
 
-    Tracker->>Tracker: __check_card() 帧稳定性检查
+    Tracker->>Tracker: _check_card() 帧稳定性检查
     Tracker->>Tracker: 状态机: WAIT_BEGIN → HAS_STARTED → STARTED_RECORD_CARD
     Tracker->>Tracker: _delete_played_cards() 扣牌
-    Tracker-->>SubProc: (remain_cards, show_left, show_right, show_self, yolo_ms)
+    Tracker-->>SubProc: (remain_cards, show_cards: dict, yolo_ms)
 
     SubProc->>ResultQ: put(("ok", result, yolo_ms))
 
     Note over Worker: _poll_timer (20ms) 轮询
     Worker->>ResultQ: get_nowait()
-    Worker->>UI: result_ready.emit(remain_cards, show_left, show_right, show_self, inference_ms)
+    Worker->>UI: result_ready.emit(remain_cards, show_cards, inference_ms)
 
     UI->>UI: on_result_ready()
     Note over UI: 更新标题栏耗时<br/>更新出牌文本<br/>更新牌数量和depleted样式
@@ -71,7 +71,7 @@ sequenceDiagram
     participant UI as CardUI
     participant Worker as InferenceWorker
     participant SubProc as _inference_loop (子进程)
-    participant Tracker as CardTracker
+    participant Tracker as BaseCardTracker
     participant Detector as CardDetector
 
     Main->>App: QApplication(sys.argv)
@@ -82,11 +82,13 @@ sequenceDiagram
 
     Note over UI: __init__
     UI->>UI: 初始化窗口/布局/标签
-    UI->>Worker: InferenceWorker(layout_name)
+    UI->>Worker: InferenceWorker(layout_name, game_name)
     UI->>Worker: worker.start()
 
     Worker->>SubProc: mp.Process(target=_inference_loop)
-    SubProc->>Tracker: CardTracker(layout_name)
+    SubProc->>SubProc: create_tracker(game_name, layout_name)
+    Note over SubProc: 工厂函数根据 game_name 创建子类
+    SubProc->>Tracker: DoudizhuTracker(layout_name)
     Tracker->>Detector: CardDetector(layout_name)
     Detector->>Detector: __load_model()
     Note over Detector: GPU: TensorRT > PyTorch CUDA<br/>CPU: ONNX > PyTorch CPU
@@ -167,7 +169,7 @@ sequenceDiagram
     participant Timer as QTimer
     participant UI as CardUI
     participant Worker as InferenceWorker
-    participant Tracker as CardTracker
+    participant Tracker as BaseCardTracker
     participant Detector as CardDetector
 
     Note over Tracker: state = WAIT_BEGIN
@@ -178,34 +180,34 @@ sequenceDiagram
     Tracker->>Detector: detect()
 
     Note over Tracker: === WAIT_BEGIN 阶段 ===
-    Detector-->>Tracker: landlord_cards 非空
-    Tracker->>Tracker: __check_card(landlord_cards) 稳定?
+    Detector-->>Tracker: validity_region 非空
+    Tracker->>Tracker: should_start_game() 稳定?
     alt 连续帧不稳定
         Note over Tracker: 保持 WAIT_BEGIN
     else 连续帧稳定
         Note over Tracker: state → HAS_STARTED
-        Tracker->>Tracker: debug_manager.start_new_game()
+        Tracker->>Tracker: on_game_started()
     end
 
     Note over Tracker: === HAS_STARTED 阶段 ===
-    Detector-->>Tracker: player_hand
-    Tracker->>Tracker: __check_card(player_hand) 稳定?
+    Tracker->>Tracker: should_start_recording() 稳定?
     alt 连续帧不稳定
         Note over Tracker: 保持 HAS_STARTED
     else 连续帧稳定
         Note over Tracker: state → STARTED_RECORD_CARD
-        Tracker->>Tracker: _delete_played_cards(player_hand)
+        Tracker->>Tracker: on_start_recording()
     end
 
     Note over Tracker: === STARTED_RECORD_CARD 阶段 ===
     loop 每次检测
-        Detector-->>Tracker: opponent_left / opponent_right / player_played
-        Tracker->>Tracker: __check_card() 各区域独立检查
+        Detector-->>Tracker: frame_data (各区域)
+        Tracker->>Tracker: _process_all_played_zones()
+        Tracker->>Tracker: _check_card() 各区域独立检查
         alt 检测到出牌变化
-            Tracker->>Tracker: _delete_played_cards(played)
-            Tracker->>Tracker: show_*_cards.append()
+            Tracker->>Tracker: process_played_cards(zone_key, cards)
+            Tracker->>Tracker: show_cards[zone_key].append()
         else 检测到空帧(不出)
-            Tracker->>Tracker: has_found_empty_* = True
+            Tracker->>Tracker: has_found_empty[zone_key] = True
         end
     end
 

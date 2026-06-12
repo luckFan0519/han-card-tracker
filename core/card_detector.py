@@ -242,18 +242,19 @@ class CardDetector:
 
         return [dets[i] for i in sorted_indices]
 
-    def parse_result(self, r) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict], List[Dict]]:
+    def parse_result(self, r) -> dict[str, list[dict]]:
         """解析 YOLO 单帧检测结果，按布局区域分区并排序。
 
         将归一化布局区域转为像素坐标，根据检测框中心点判断所属区域，
         最后对每个区域内的检测框调用 ``sort_cards_by_topright_rowwise`` 排序。
 
+        区域键名从 ``layout_config["layout"]`` 动态获取，支持不同游戏配置。
+
         Args:
             r: YOLO 单帧结果对象（``results[0]``）。
 
         Returns:
-            Tuple[List[Dict], ...]: 五个区域的检测结果列表：
-                (player_hand, player_played, opponent_left, opponent_right, landlord_cards)。
+            dict[str, list[dict]]: 各区域的检测结果列表，key 为区域名。
         """
         layout = self.layout_config["layout"]
         img_h, img_w = r.orig_shape[:2]
@@ -271,30 +272,11 @@ class CardDetector:
             rx1, ry1, rx2, ry2 = region
             return rx1 <= cx <= rx2 and ry1 <= cy <= ry2
 
-        regions = {
-            "player_hand": norm_to_pixel(layout["player_hand"]),
-            "player_played": norm_to_pixel(layout["player_played"]),
-            "opponent_left": norm_to_pixel(layout["opponent_left"]),
-            "opponent_right": norm_to_pixel(layout["opponent_right"]),
-            "landlord_cards": norm_to_pixel(layout["landlord_cards"]),
-        }
-
-        results = {
-            "player_hand": [],
-            "player_played": [],
-            "opponent_left": [],
-            "opponent_right": [],
-            "landlord_cards": []
-        }
+        regions = {key: norm_to_pixel(coords) for key, coords in layout.items()}
+        results = {key: [] for key in layout}
 
         if r.boxes is None:
-            return (
-                results["player_hand"],
-                results["player_played"],
-                results["opponent_left"],
-                results["opponent_right"],
-                results["landlord_cards"]
-            )
+            return results
 
         boxes = r.boxes.xyxy.cpu().numpy()
         clses = r.boxes.cls.cpu().numpy().astype(int)
@@ -315,19 +297,10 @@ class CardDetector:
                     results[name].append(det)
                     break
 
-        results["opponent_left"] = self.sort_cards_by_topright_rowwise(results["opponent_left"])
-        results["opponent_right"] = self.sort_cards_by_topright_rowwise(results["opponent_right"])
-        results["landlord_cards"] = self.sort_cards_by_topright_rowwise(results["landlord_cards"])
-        results["player_hand"] = self.sort_cards_by_topright_rowwise(results["player_hand"])
-        results["player_played"] = self.sort_cards_by_topright_rowwise(results["player_played"])
+        for key in results:
+            results[key] = self.sort_cards_by_topright_rowwise(results[key])
 
-        return (
-            results["player_hand"],
-            results["player_played"],
-            results["opponent_left"],
-            results["opponent_right"],
-            results["landlord_cards"]
-        )
+        return results
 
     def __perform_yolo_recognition(self) -> Tuple[object, float]:
         """执行一次 YOLO 推理，仅对 model() 调用计时。
@@ -377,23 +350,15 @@ class CardDetector:
             res.append(name)
         return res
 
-    def detect(self) -> Tuple[list[str], list[str], list[str], list[str], list[str], float]:
+    def detect(self) -> tuple[dict[str, list[str]], float]:
         """执行一次完整的检测流水线：截图→推理→分区→排序→映射。
 
         Returns:
-            Tuple: 包含六个元素：
-                - player_hand (list[str]): 玩家手牌牌点。
-                - player_played (list[str]): 本家出牌牌点。
-                - opponent_left (list[str]): 上家出牌牌点。
-                - opponent_right (list[str]): 下家出牌牌点。
-                - landlord_cards (list[str]): 地主底牌牌点。
+            tuple: 包含两个元素：
+                - frame_data (dict[str, list[str]]): 各区域的牌点列表，key 为区域名。
                 - yolo_ms (float): YOLO 推理耗时（毫秒）。
         """
         r, yolo_ms = self.__perform_yolo_recognition()
-        r1, r2, r3, r4, r5 = self.parse_result(r[0])
-        player_hand = self.__trans_yolo_to_card(r1)
-        player_played = self.__trans_yolo_to_card(r2)
-        opponent_left = self.__trans_yolo_to_card(r3)
-        opponent_right = self.__trans_yolo_to_card(r4)
-        landlord_cards = self.__trans_yolo_to_card(r5)
-        return player_hand, player_played, opponent_left, opponent_right, landlord_cards, yolo_ms
+        parsed = self.parse_result(r[0])
+        frame_data = {key: self.__trans_yolo_to_card(dets) for key, dets in parsed.items()}
+        return frame_data, yolo_ms

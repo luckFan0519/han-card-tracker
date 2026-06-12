@@ -212,6 +212,18 @@ class SettingsDialog(QDialog):
         reset_layout.addStretch()
         basic_layout.addLayout(reset_layout)
 
+        # 游戏选择
+        from config.settings import _scan_game_configs, GAME_NAME
+        game_names = _scan_game_configs()
+        self.combo_game = self._add_combo_row(
+            basic_layout,
+            "游戏选择(重启生效)：",
+            "GameCombo",
+            game_names,
+            self._on_game_changed,
+            tooltip="选择要支持的卡牌游戏类型，切换后需重启程序生效",
+        )
+
         self.combo_layout = QComboBox()
         self.combo_layout.setObjectName("LayoutCombo")
         self.combo_layout.setMinimumWidth(300)
@@ -378,6 +390,14 @@ class SettingsDialog(QDialog):
         if self.on_layout_change_callback:
             self.on_layout_change_callback(index)
 
+    def _on_game_changed(self, index):
+        """游戏选择改变事件。"""
+        from config.settings import _scan_game_configs, save_game_choice
+        game_names = _scan_game_configs()
+        if 0 <= index < len(game_names):
+            game_name = game_names[index]
+            save_game_choice(game_name)
+
     def _on_device_changed(self, index):
         """
         设备选择改变事件
@@ -534,6 +554,15 @@ class SettingsDialog(QDialog):
         device_text = device_map.get(device_choice, "CPU")
         index = self.combo_device.findText(device_text)
         self._set_combo_current_safely(self.combo_device, index)
+
+    def set_current_game(self, game_name: str):
+        """设置当前游戏选择。
+
+        Args:
+            game_name: 游戏名称（如 ``"doudizhu"``）。
+        """
+        index = self.combo_game.findText(game_name)
+        self._set_combo_current_safely(self.combo_game, index)
 
     def set_current_reset_time(self, reset_time):
         """

@@ -11,6 +11,7 @@ classDiagram
         -layout_name: str
         -detect_interval_sec: float
         -played_cards: dict
+        -played_cards_labels: dict
         -card_order: list
         -worker: InferenceWorker
         -timer: QTimer
@@ -23,7 +24,7 @@ classDiagram
         -_last_depleted_values: dict
         -_last_played_signature: tuple
         +request_one_update()
-        +on_result_ready(remain_cards, show_left, show_right, show_self, inference_ms)
+        +on_result_ready(remain_cards, show_cards, inference_ms)
         +on_worker_error(err_text)
         +on_worker_finished()
         +on_settings_clicked()
@@ -54,6 +55,7 @@ classDiagram
         -tab_widget: QTabWidget
         -combo_layout: QComboBox
         -combo_device: QComboBox
+        -combo_game: QComboBox
         -combo_interval: QComboBox
         -combo_reset_time: QComboBox
         -combo_frame_length: QComboBox
@@ -79,6 +81,7 @@ classDiagram
         -on_layout_delete_callback: callable
         -on_model_change_callback: callable
         -on_confidence_change_callback: callable
+        -on_game_change_callback: callable
         +set_current_interval(interval_text)
         +set_current_layout(layout_name)
         +set_current_device(device_choice)
@@ -91,6 +94,7 @@ classDiagram
         +set_current_show_timing(show_timing)
         +set_current_model(model_name)
         +set_current_confidence(confidence)
+        +set_current_game(game_name)
         +refresh_layout_list(selected_name)
     }
 
@@ -157,6 +161,7 @@ classDiagram
     %% ========== 推理层 ==========
     class InferenceWorker {
         -_layout_name: str
+        -_game_name: str
         -_cmd_queue: mp.Queue
         -_result_queue: mp.Queue
         -_process: mp.Process
@@ -177,35 +182,49 @@ classDiagram
 
     class _inference_loop {
         <<function>>
-        +_inference_loop(cmd_queue, result_queue, layout_name)
+        +_inference_loop(cmd_queue, result_queue, layout_name, game_name)
     }
 
     %% ========== 核心层 ==========
-    class CardTracker {
-        -has_found_empty_left: bool
-        -has_found_empty_right: bool
-        -has_found_empty_self: bool
-        -layout_name: str
-        -card_detector: CardDetector
-        -state: str
-        -player_hand: list
-        -player_played: list
-        -opponent_left: list
-        -opponent_right: list
-        -landlord_cards: list
-        -show_left_cards: list
-        -show_right_cards: list
-        -show_self_cards: list
-        -remain_cards: dict
-        -no_target_time: float
-        -debug_manager: DebugImageManager
-        -_last_yolo_ms: float
+    class BaseCardTracker {
+        <<abstract>>
+        #layout_name: str
+        #card_detector: CardDetector
+        #state: int
+        #frame_caches: dict
+        #show_cards: dict
+        #has_found_empty: dict
+        #remain_cards: dict
+        #no_target_time: float
+        #debug_manager: DebugImageManager
+        #_last_yolo_ms: float
         +reset()
         +get_cards_number() tuple
-        -__presses_one_frame()
-        -__check_card(lst) bool
-        -_delete_played_cards(lst)
-        -run_game()
+        +run_game()
+        #_presses_one_frame()
+        #_check_card(lst) bool
+        #_delete_played_cards(lst)
+        #_process_all_played_zones()
+        #_get_validity_region()* str
+        +should_start_game()* bool
+        +should_start_recording()* bool
+        +on_game_started()*
+        +on_start_recording()*
+        +process_played_cards(zone_key, cards)*
+    }
+
+    class DoudizhuTracker {
+        +_get_validity_region() str
+        +should_start_game() bool
+        +should_start_recording() bool
+        +on_game_started()
+        +on_start_recording()
+        +process_played_cards(zone_key, cards)
+    }
+
+    class create_tracker {
+        <<function>>
+        +create_tracker(game_name, layout_name) BaseCardTracker
     }
 
     class CardDetector {
@@ -219,8 +238,8 @@ classDiagram
         -model: YOLO
         -device: str
         -debug_manager: DebugImageManager
-        +detect() tuple
-        +parse_result(r) tuple
+        +detect() tuple[dict, float]
+        +parse_result(r) dict
         +sort_cards_by_topright_rowwise(dets, max_rows) list
         -__load_model() tuple
         -__load_tensorrt(engine_path) YOLO
@@ -258,6 +277,7 @@ classDiagram
         +BASE_DIR: str
         +RESOURCE_DIR: str
         +CONFIG_PATH: str
+        +GAMES_DIR: str
         +YOLO_MODEL_NAME: str
         +YOLO_MODEL_PATH: str
         +RESET_TIME: float
@@ -275,10 +295,17 @@ classDiagram
         +ALWAYS_ON_TOP: bool
         +SHOW_PLAYED_CARDS: bool
         +TOTAL_CARDS: dict
-        +WAIT_BEGIN: str
-        +HAS_STARTED: str
-        +STARTED_RECORD_CARD: str
+        +GAME_NAME: str
+        +GAME_CONFIG: dict
+        +GAME_DISPLAY_NAME: str
+        +PLAYED_ZONES: list
+        +LAYOUT_REGIONS: list
+        +WAIT_BEGIN: int
+        +HAS_STARTED: int
+        +STARTED_RECORD_CARD: int
         +load_config() dict
+        +_scan_game_configs() list
+        +_load_game_config(game_name) dict
         +save_device_choice(device_choice)
         +save_model_choice(model_name)
         +save_confidence_choice(confidence)
@@ -290,6 +317,7 @@ classDiagram
         +save_debug_mode(debug_mode)
         +save_debug_images_choice(save_debug_images)
         +save_show_timing_choice(show_timing)
+        +save_game_choice(game_name)
         +save_current_layout(layout_name)
         +save_window_layout(layout_name, window_title, layout_dict)
         +delete_window_layout(layout_name)
@@ -358,11 +386,13 @@ classDiagram
     LayoutEditorDialog ..> validator : 依赖
 
     InferenceWorker ..> _inference_loop : 创建子进程
-    _inference_loop ..> CardTracker : 创建实例
+    _inference_loop ..> create_tracker : 调用工厂函数
+    create_tracker ..> DoudizhuTracker : 创建实例
 
-    CardTracker *-- CardDetector : 组合
-    CardTracker o-- DebugImageManager : 聚合（单例）
-    CardTracker ..> settings : 依赖（状态常量/配置）
+    DoudizhuTracker --|> BaseCardTracker : 继承
+    BaseCardTracker *-- CardDetector : 组合
+    BaseCardTracker o-- DebugImageManager : 聚合（单例）
+    BaseCardTracker ..> settings : 依赖（状态常量/配置）
 
     CardDetector *-- ScreenCapture : 组合
     CardDetector o-- DebugImageManager : 聚合（单例）

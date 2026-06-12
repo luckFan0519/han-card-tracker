@@ -9,20 +9,20 @@
     主进程 (UI)                          子进程 (推理)
     ┌────────────────┐                  ┌────────────────────┐
     │ InferenceWorker │  ──cmd_queue──► │  _inference_loop() │
-    │  (QObject)      │                  │    CardTracker     │
+    │  (QObject)      │                  │   BaseCardTracker  │
     │  poll_timer     │  ◄─result_queue─ │    CardDetector    │
     └────────────────┘                  └────────────────────┘
 
 命令协议（cmd_queue）：
     - ``"detect"``                → 执行一次识别
     - ``"reset"``                 → 重置记牌器状态
-    - ``("switch_layout", name)`` → 切换布局（重建 CardTracker）
-    - ``("switch_model", name)``  → 切换模型（重建 CardTracker，重启生效）
+    - ``("switch_layout", name)`` → 切换布局（重建 Tracker）
+    - ``("switch_model", name)``  → 切换模型（重建 Tracker，重启生效）
     - ``("touch_time",)``         → 刷新 no_target_time
     - ``None``                    → 终止子进程
 
 结果协议（result_queue）：
-    - ``("ok", (remain_cards, show_left, show_right, show_self), yolo_ms)``
+    - ``("ok", (remain_cards, show_cards), yolo_ms)``
     - ``("error", str)``
 """
 
@@ -36,7 +36,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 # ===================== 子进程入口 =====================
 
-def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: str) -> None:
+def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: str, game_name: str) -> None:
     """子进程主循环：阻塞等待命令，执行推理，回传结果。
 
     此函数在子进程中运行，**不能操作任何 Qt 对象**。
@@ -45,10 +45,11 @@ def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: st
         cmd_queue: 命令队列，主进程向子进程发送指令。
         result_queue: 结果队列，子进程向主进程回传数据。
         layout_name: 初始布局名称。
+        game_name: 游戏名称。
     """
-    from core.card_tracker import CardTracker
+    from core.games import create_tracker
 
-    tracker = CardTracker(layout_name)
+    tracker = create_tracker(game_name, layout_name)
 
     while True:
         try:
@@ -63,9 +64,8 @@ def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: st
 
         if cmd == "detect":
             try:
-                result = tracker.get_cards_number()
-                yolo_ms = result[4]
-                result_queue.put(("ok", result[:4], yolo_ms))
+                remain_cards, show_cards, yolo_ms = tracker.get_cards_number()
+                result_queue.put(("ok", (remain_cards, show_cards), yolo_ms))
             except Exception:
                 result_queue.put(("error", traceback.format_exc()))
 
@@ -75,7 +75,7 @@ def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: st
         elif isinstance(cmd, tuple) and cmd[0] == "switch_layout":
             new_layout = cmd[1]
             try:
-                tracker = CardTracker(new_layout)
+                tracker = create_tracker(game_name, new_layout)
             except Exception:
                 result_queue.put(("error", f"切换布局失败: {traceback.format_exc()}"))
 
@@ -85,7 +85,7 @@ def _inference_loop(cmd_queue: mp.Queue, result_queue: mp.Queue, layout_name: st
                 import config.settings as s
                 s.YOLO_MODEL_NAME = model_name
                 s.YOLO_MODEL_PATH = s._resolve_model_path(model_name)
-                tracker = CardTracker(tracker.layout_name)
+                tracker = create_tracker(game_name, tracker.layout_name)
             except Exception:
                 result_queue.put(("error", f"切换模型失败: {traceback.format_exc()}"))
 
@@ -104,24 +104,26 @@ class InferenceWorker(QObject):
         3. 通过轮询定时器从结果队列读取数据，以信号形式通知 UI。
 
     Attributes:
-        result_ready: 信号，推理成功时发射 (remain_cards, show_left, show_right, show_self, elapsed_ms)。
+        result_ready: 信号，推理成功时发射 (remain_cards, show_cards, elapsed_ms)。
         error: 信号，推理出错时发射错误信息。
         finished: 信号，一轮推理完成时发射。
     """
 
-    result_ready = Signal(dict, list, list, list, float)
+    result_ready = Signal(dict, dict, float)
     error = Signal(str)
     finished = Signal()
 
-    def __init__(self, layout_name: str, parent=None) -> None:
+    def __init__(self, layout_name: str, game_name: str = "doudizhu", parent=None) -> None:
         """初始化推理 Worker。
 
         Args:
             layout_name: 初始布局名称。
+            game_name: 游戏名称（如 ``"doudizhu"``）。
             parent: 父 QObject。
         """
         super().__init__(parent)
         self._layout_name: str = layout_name
+        self._game_name: str = game_name
         self._cmd_queue: mp.Queue = mp.Queue()
         self._result_queue: mp.Queue = mp.Queue()
         self._process: mp.Process | None = None
@@ -134,7 +136,7 @@ class InferenceWorker(QObject):
         """启动子进程和轮询定时器。"""
         self._process = mp.Process(
             target=_inference_loop,
-            args=(self._cmd_queue, self._result_queue, self._layout_name),
+            args=(self._cmd_queue, self._result_queue, self._layout_name, self._game_name),
             daemon=True,
         )
         self._process.start()
@@ -239,7 +241,8 @@ class InferenceWorker(QObject):
 
             if msg[0] == "ok":
                 _, result, elapsed_ms = msg
-                self.result_ready.emit(*result, elapsed_ms)
+                remain_cards, show_cards = result
+                self.result_ready.emit(remain_cards, show_cards, elapsed_ms)
             elif msg[0] == "error":
                 self.error.emit(msg[1])
 

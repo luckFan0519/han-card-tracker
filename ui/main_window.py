@@ -82,11 +82,7 @@ class CardUI(QMainWindow):
             settings.CURRENT_LAYOUT = self.layout_name
 
         self.detect_interval_sec = settings.DETECT_INTERVAL_SEC
-        self.played_cards = {
-            "left": "",
-            "right": "",
-            "self": "",
-        }
+        self.played_cards: dict[str, str] = {z["key"]: "" for z in settings.PLAYED_ZONES}
 
         # -------------------------
         # 牌序：按 TOTAL_CARDS 的 key 顺序 的逆序
@@ -154,18 +150,15 @@ class CardUI(QMainWindow):
         self.second_row_layout.setSpacing(3)
         # 注意：这里不立即添加到root，而是在_update_played_cards_visibility中根据设置添加
 
-        # 初始化三个标签
-        self.left_played_cards_label = QLabel(self.played_cards["left"])  # 上家
-        self.self_played_cards_label = QLabel(self.played_cards["self"])    # 本家
-        self.right_played_cards_label = QLabel(self.played_cards["right"])  # 下家
-
-        # 按照上家、本家、下家的顺序添加到布局中
-        for lbl in (self.left_played_cards_label, self.self_played_cards_label, self.right_played_cards_label):
+        # 初始化出牌标签（从游戏配置动态生成）
+        self.played_cards_labels: dict[str, QLabel] = {}
+        for zone in settings.PLAYED_ZONES:
+            key = zone["key"]
+            label = zone["label"]
+            lbl = QLabel(self.played_cards[key])
             lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            lbl.setObjectName("InfoLabel")  # 方便 QSS
-
-        # 保存标签列表，用于后续控制
-        self.played_cards_labels = [self.left_played_cards_label, self.self_played_cards_label, self.right_played_cards_label]
+            lbl.setObjectName("InfoLabel")
+            self.played_cards_labels[key] = lbl
 
         # 根据设置决定是否显示玩家所出的牌
         self._update_played_cards_visibility()
@@ -216,7 +209,7 @@ class CardUI(QMainWindow):
         # -------------------------
         # 多进程推理 worker
         # -------------------------
-        self.worker = InferenceWorker(self.layout_name)
+        self.worker = InferenceWorker(self.layout_name, game_name=settings.GAME_NAME)
         self.worker.result_ready.connect(self.on_result_ready)
         self.worker.error.connect(self.on_worker_error)
         self.worker.finished.connect(self.on_worker_finished)
@@ -311,6 +304,10 @@ class CardUI(QMainWindow):
         # 设置当前模型选择
         from config.settings import YOLO_MODEL_NAME
         dialog.set_current_model(YOLO_MODEL_NAME)
+
+        # 设置当前游戏选择
+        from config.settings import GAME_NAME
+        dialog.set_current_game(GAME_NAME)
 
         # 设置当前置信度阈值
         from config.settings import YOLO_CONFIDENCE_THRESHOLD
@@ -440,8 +437,8 @@ class CardUI(QMainWindow):
         self._last_cycle_start = time.perf_counter()
         self.worker.request_detect()
 
-    @Slot(dict, list, list, list, float)
-    def on_result_ready(self, remain_cards: dict, show_left: list, show_right: list, show_self: list, inference_ms: float):
+    @Slot(dict, dict, float)
+    def on_result_ready(self, remain_cards: dict, show_cards: dict, inference_ms: float):
         """
         收到 worker 的识别结果：
         - 更新剩余牌数量
@@ -459,15 +456,18 @@ class CardUI(QMainWindow):
             self.setWindowTitle("Han记牌器")
 
         # 更新出牌文本（仅在内容变化时更新）
-        played_signature = (
-            tuple(tuple(x) if isinstance(x, list) else x for x in show_left),
-            tuple(tuple(x) if isinstance(x, list) else x for x in show_self),
-            tuple(tuple(x) if isinstance(x, list) else x for x in show_right),
+        played_signature = tuple(
+            (key, tuple(tuple(x) if isinstance(x, list) else x for x in show_cards.get(key, [])))
+            for zone in settings.PLAYED_ZONES
+            for key in [zone["key"]]
         )
         if played_signature != self._last_played_signature:
-            self.self_played_cards_label.setText("   本家     " + trans_yolo_names_to_string(show_self))
-            self.left_played_cards_label.setText("   上家     " + trans_yolo_names_to_string(show_left))
-            self.right_played_cards_label.setText("   下家     " + trans_yolo_names_to_string(show_right))
+            for zone in settings.PLAYED_ZONES:
+                key = zone["key"]
+                label = zone["label"]
+                lbl = self.played_cards_labels.get(key)
+                if lbl:
+                    lbl.setText(f"   {label}     " + trans_yolo_names_to_string(show_cards.get(key, [])))
             self._last_played_signature = played_signature
 
         for card in self.card_order:
@@ -572,7 +572,7 @@ class CardUI(QMainWindow):
 
         # Ensure played cards labels are present in second_row_layout when visible
         if self._show_played_cards:
-            for lbl in self.played_cards_labels:
+            for key, lbl in self.played_cards_labels.items():
                 try:
                     if lbl.parent() is None:
                         self.second_row_layout.addWidget(lbl)
@@ -580,7 +580,7 @@ class CardUI(QMainWindow):
                 except Exception:
                     pass
         else:
-            for lbl in self.played_cards_labels:
+            for key, lbl in self.played_cards_labels.items():
                 try:
                     lbl.setVisible(False)
                 except Exception:
@@ -664,7 +664,7 @@ class CardUI(QMainWindow):
         # 重置 UI
         self._reset_ui_to_total()
 
-        # 通知子进程切换布局（子进程内部重建 CardTracker）
+        # 通知子进程切换布局（子进程内部重建 Tracker）
         self.worker.switch_layout(selected_layout)
 
         # 重启定时器
@@ -903,7 +903,7 @@ class CardUI(QMainWindow):
             if self.second_row_layout.parent() is None:
                 self.root_layout.addLayout(self.second_row_layout)
 
-            for lbl in self.played_cards_labels:
+            for key, lbl in self.played_cards_labels.items():
                 if lbl.parent() is None:
                     self.second_row_layout.addWidget(lbl)
                 lbl.setVisible(True)
@@ -911,7 +911,7 @@ class CardUI(QMainWindow):
                 lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         else:
             # 隐藏并从布局移除标签（不要 setParent(None)，否则控件会脱离父窗口并可能无法恢复）
-            for lbl in self.played_cards_labels:
+            for key, lbl in self.played_cards_labels.items():
                 try:
                     self.second_row_layout.removeWidget(lbl)
                 except Exception:

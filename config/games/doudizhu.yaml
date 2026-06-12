@@ -1,0 +1,63 @@
+# 斗地主游戏配置
+game_name: "斗地主"
+
+# 牌组定义：每种牌的初始数量
+total_cards:
+  '3': 4
+  '4': 4
+  '5': 4
+  '6': 4
+  '7': 4
+  '8': 4
+  '9': 4
+  '10': 4
+  'J': 4
+  'Q': 4
+  'K': 4
+  'A': 4
+  '2': 4
+  'jok': 1
+  'JOK': 1
+
+# YOLO 类名到牌点映射
+yolo_to_card_mapping:
+  two: '2'
+  three: '3'
+  four: '4'
+  five: '5'
+  six: '6'
+  seven: '7'
+  eight: '8'
+  nine: '9'
+  ten: '10'
+  J: 'J'
+  Q: 'Q'
+  K: 'K'
+  A: 'A'
+  joker: 'jok'
+  JOKER: 'JOK'
+
+# 出牌区域定义：key 为内部标识，label 为 UI 显示，region 对应 layout 中的区域键名
+played_zones:
+  - key: "left"
+    label: "上家"
+    region: "opponent_left"
+  - key: "self"
+    label: "本家"
+    region: "player_played"
+  - key: "right"
+    label: "下家"
+    region: "opponent_right"
+
+# 布局区域定义：key 为 layout 配置中的键名，label 为可视化编辑时的显示名
+layout_regions:
+  - key: "player_hand"
+    label: "玩家手牌"
+  - key: "player_played"
+    label: "本家出牌"
+  - key: "opponent_left"
+    label: "上家出牌"
+  - key: "opponent_right"
+    label: "下家出牌"
+  - key: "landlord_cards"
+    label: "地主底牌"

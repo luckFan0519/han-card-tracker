@@ -20,7 +20,9 @@ classDiagram
     class _inference_loop
 
     %% ========== 核心层 ==========
-    class CardTracker
+    class BaseCardTracker
+    class DoudizhuTracker
+    class create_tracker
     class CardDetector
     class ScreenCapture
     class DebugImageManager
@@ -50,15 +52,18 @@ classDiagram
     LayoutEditorDialog *-- RectCanvas
     SettingsDialog *-- LayoutComboView
     SettingsDialog *-- LayoutItemDelegate
-    CardTracker *-- CardDetector
+    BaseCardTracker *-- CardDetector
     CardDetector *-- ScreenCapture
 
     %% ========== 聚合（按需创建/共享单例） ==========
     CardUI o-- SettingsDialog
     SettingsDialog o-- LayoutEditorDialog
     LayoutEditorDialog o-- PreviewDialog
-    CardTracker o-- DebugImageManager
+    BaseCardTracker o-- DebugImageManager
     CardDetector o-- DebugImageManager
+
+    %% ========== 继承 ==========
+    DoudizhuTracker --|> BaseCardTracker
 
     %% ========== 依赖 ==========
     CardUI ..> settings
@@ -68,8 +73,9 @@ classDiagram
     LayoutEditorDialog ..> coord
     LayoutEditorDialog ..> validator
     InferenceWorker ..> _inference_loop
-    _inference_loop ..> CardTracker
-    CardTracker ..> settings
+    _inference_loop ..> create_tracker
+    create_tracker ..> DoudizhuTracker
+    BaseCardTracker ..> settings
     CardDetector ..> settings
     ScreenCapture ..> settings
 ```
@@ -86,7 +92,8 @@ classDiagram
 ## 数据流主线
 
 ```
-CardUI → InferenceWorker → _inference_loop(子进程) → CardTracker → CardDetector → ScreenCapture
-                                                                          ↓
-                                                                     YOLO Model
+CardUI → InferenceWorker → _inference_loop(子进程) → create_tracker → DoudizhuTracker → CardDetector → ScreenCapture
+                                                                            ↓
+                                                                       BaseCardTracker
+                                                                       YOLO Model
 ```

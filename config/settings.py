@@ -46,6 +46,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, 'config', 'config.yaml')
 DEFAULT_CONFIG_PATH = os.path.join(RESOURCE_DIR, 'config', 'config.yaml')
 YOLO_WEIGHTS_DIR = os.path.join(RESOURCE_DIR, 'yolo', 'weights')
 QSS_PATH = os.path.join(RESOURCE_DIR, 'ui', 'ui.qss')
+GAMES_DIR = os.path.join(RESOURCE_DIR, 'config', 'games')
 
 
 def _scan_model_dirs() -> list[str]:
@@ -73,6 +74,60 @@ def _resolve_model_path(model_name: str | None) -> str:
     if dirs:
         return os.path.join(YOLO_WEIGHTS_DIR, dirs[0], 'best.pt')
     return os.path.join(YOLO_WEIGHTS_DIR, 'default', 'best.pt')
+
+
+def _scan_game_configs() -> list[str]:
+    """扫描 config/games/ 目录下的 YAML 文件，返回游戏名称列表。"""
+    if not os.path.isdir(GAMES_DIR):
+        return ['doudizhu']
+    names = []
+    for f in sorted(os.listdir(GAMES_DIR)):
+        if f.endswith('.yaml') or f.endswith('.yml'):
+            names.append(os.path.splitext(f)[0])
+    return names if names else ['doudizhu']
+
+
+def _load_game_config(game_name: str) -> dict:
+    """加载指定游戏的配置文件。
+
+    Args:
+        game_name: 游戏名称（对应 config/games/ 下的 YAML 文件名）。
+
+    Returns:
+        dict: 游戏配置字典。加载失败时返回斗地主默认配置。
+    """
+    path = os.path.join(GAMES_DIR, f'{game_name}.yaml')
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f"加载游戏配置失败: {e}")
+    # Fallback: 内置斗地主默认配置
+    return {
+        'game_name': '斗地主',
+        'total_cards': {
+            '3': 4, '4': 4, '5': 4, '6': 4, '7': 4, '8': 4, '9': 4, '10': 4,
+            'J': 4, 'Q': 4, 'K': 4, 'A': 4, '2': 4, 'jok': 1, 'JOK': 1,
+        },
+        'yolo_to_card_mapping': {
+            'two': '2', 'three': '3', 'four': '4', 'five': '5', 'six': '6',
+            'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10',
+            'J': 'J', 'Q': 'Q', 'K': 'K', 'A': 'A', 'joker': 'jok', 'JOKER': 'JOK',
+        },
+        'played_zones': [
+            {'key': 'left', 'label': '上家', 'region': 'opponent_left'},
+            {'key': 'self', 'label': '本家', 'region': 'player_played'},
+            {'key': 'right', 'label': '下家', 'region': 'opponent_right'},
+        ],
+        'layout_regions': [
+            {'key': 'player_hand', 'label': '玩家手牌'},
+            {'key': 'player_played', 'label': '本家出牌'},
+            {'key': 'opponent_left', 'label': '上家出牌'},
+            {'key': 'opponent_right', 'label': '下家出牌'},
+            {'key': 'landlord_cards', 'label': '地主底牌'},
+        ],
+    }
 
 
 def _ensure_runtime_config_exists():
@@ -157,6 +212,23 @@ def load_config():
 # 加载配置
 config = load_config()
 
+# ==================== 游戏选择 ====================
+GAME_NAME = config.get('game_name', 'doudizhu')
+GAME_CONFIG = _load_game_config(GAME_NAME)
+GAME_DISPLAY_NAME = GAME_CONFIG.get('game_name', GAME_NAME)
+PLAYED_ZONES = GAME_CONFIG.get('played_zones', [
+    {'key': 'left', 'label': '上家', 'region': 'opponent_left'},
+    {'key': 'self', 'label': '本家', 'region': 'player_played'},
+    {'key': 'right', 'label': '下家', 'region': 'opponent_right'},
+])
+LAYOUT_REGIONS = GAME_CONFIG.get('layout_regions', [
+    {'key': 'player_hand', 'label': '玩家手牌'},
+    {'key': 'player_played', 'label': '本家出牌'},
+    {'key': 'opponent_left', 'label': '上家出牌'},
+    {'key': 'opponent_right', 'label': '下家出牌'},
+    {'key': 'landlord_cards', 'label': '地主底牌'},
+])
+
 # ==================== YOLO 模型选择 ====================
 YOLO_MODEL_NAME = config.get('yolo_model_name', '') or (_scan_model_dirs()[0] if _scan_model_dirs() else '')
 YOLO_MODEL_PATH = _resolve_model_path(YOLO_MODEL_NAME)
@@ -174,7 +246,8 @@ YOLO_CONFIDENCE_THRESHOLD = config.get('yolo_confidence_threshold', 0.6)  # YOLO
 YOLO_IOU_THRESHOLD = config.get('yolo_iou_threshold', 0.45)
 
 # ==================== YOLO类别映射配置 ====================
-YOLO_TO_CARD_MAPPING = config.get('yolo_to_card_mapping', {
+# 优先从游戏配置加载，fallback 到 config.yaml 中的配置
+YOLO_TO_CARD_MAPPING = GAME_CONFIG.get('yolo_to_card_mapping') or config.get('yolo_to_card_mapping', {
     'two': '2',
     'three': '3',
     'four': '4',
@@ -526,6 +599,40 @@ def save_show_timing_choice(show_timing):
     except Exception as e:
         print(f"保存显示耗时设置失败: {e}")
 
+def save_game_choice(game_name: str):
+    """保存游戏选择到 config.yaml。
+
+    Args:
+        game_name: 游戏名称（如 "doudizhu"）。
+    """
+    global GAME_NAME, GAME_CONFIG, GAME_DISPLAY_NAME, TOTAL_CARDS, YOLO_TO_CARD_MAPPING, PLAYED_ZONES, LAYOUT_REGIONS
+    try:
+        cfg = {}
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict):
+                    cfg = loaded
+        except Exception:
+            cfg = {}
+
+        cfg['game_name'] = game_name
+        tmp_path = CONFIG_PATH + '.tmp'
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, CONFIG_PATH)
+
+        GAME_NAME = game_name
+        GAME_CONFIG = _load_game_config(game_name)
+        GAME_DISPLAY_NAME = GAME_CONFIG.get('game_name', game_name)
+        TOTAL_CARDS = GAME_CONFIG.get('total_cards', TOTAL_CARDS)
+        YOLO_TO_CARD_MAPPING = GAME_CONFIG.get('yolo_to_card_mapping') or YOLO_TO_CARD_MAPPING
+        PLAYED_ZONES = GAME_CONFIG.get('played_zones', PLAYED_ZONES)
+        LAYOUT_REGIONS = GAME_CONFIG.get('layout_regions', LAYOUT_REGIONS)
+        print(f"游戏选择已保存: {game_name}，请重启程序以应用更改")
+    except Exception as e:
+        print(f"保存游戏选择失败: {e}")
+
 def save_current_layout(layout_name):
     """
     保存当前布局名称到config.yaml
@@ -669,8 +776,8 @@ STARTED_RECORD_CARD = 2
 
 
 # ==================== 卡牌配置 ====================
-
-TOTAL_CARDS = {
+# 优先从游戏配置加载
+TOTAL_CARDS = GAME_CONFIG.get('total_cards', {
     '3' : 4,
     '4' : 4,
     '5' : 4,
@@ -686,5 +793,5 @@ TOTAL_CARDS = {
     '2' : 4,
     'jok' : 1,
     'JOK' : 1
-}
+})
 
