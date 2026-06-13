@@ -3,34 +3,79 @@
 > 只展示类名和关系，不展开属性/方法。详细版见 [class-diagram.md](class-diagram.md)。
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor': '#1e1e1e', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#4a90d9', 'lineColor': '#888888', 'secondaryColor': '#2d2d2d', 'tertiaryColor': '#3d3d3d'}}}%%
 classDiagram
     direction TB
 
     %% ========== UI 层 ==========
-    class CardUI
-    class SettingsDialog
-    class LayoutEditorDialog
-    class RectCanvas
-    class PreviewDialog
-    class LayoutItemDelegate
-    class LayoutComboView
+    class CardUI {
+        +request_one_update()
+        +on_result_ready()
+    }
+    class SettingsDialog {
+        +save_settings()
+    }
+    class LayoutEditorDialog {
+        +open_editor()
+    }
+    class RectCanvas {
+        +draw_regions()
+    }
+    class PreviewDialog {
+        +show_preview()
+    }
+    class LayoutItemDelegate {
+        +paint()
+    }
+    class LayoutComboView {
+        +display_layouts()
+    }
 
     %% ========== 推理层 ==========
-    class InferenceWorker
-    class GameController
-    class run_controller_loop
+    class InferenceWorker {
+        +start_worker()
+        +send_command()
+    }
+    class GameController {
+        +detect()
+        +reset()
+        +switch_layout()
+        +switch_model()
+    }
 
     %% ========== 核心层 ==========
-    class BaseCardTracker
-    class DoudizhuTracker
-    class create_tracker
-    class YoloInferencer
-    class LayoutAnalyzer
-    class ScreenCapture
-    class DebugImageManager
+    class BaseCardTracker {
+        <<abstract>>
+        +get_cards_number()
+        +translate_boxes_to_cards()
+        +reset()
+    }
+    class DoudizhuTracker {
+        +should_start_game()
+        +process_played_cards()
+    }
+    class YoloInferencer {
+        +detect()
+        +load_model()
+    }
+    class LayoutAnalyzer {
+        +parse_and_sort()
+        +sort_cards_by_topright_rowwise()
+    }
+    class ScreenCapture {
+        +capture_window()
+    }
+    class DebugImageManager {
+        +save_debug_pair()
+        +bootstrap()
+    }
 
     %% ========== 配置层 ==========
-    class settings
+    class settings {
+        WINDOW_LAYOUTS
+        YOLO_MODEL_PATH
+        TOTAL_CARDS
+    }
 
     %% ========== 工具层 ==========
     class coord
@@ -58,13 +103,12 @@ classDiagram
     GameController *-- YoloInferencer
     GameController *-- LayoutAnalyzer
     GameController *-- BaseCardTracker
+    GameController *-- DebugImageManager
 
     %% ========== 聚合（按需创建/共享单例） ==========
     CardUI o-- SettingsDialog
     SettingsDialog o-- LayoutEditorDialog
     LayoutEditorDialog o-- PreviewDialog
-    BaseCardTracker o-- DebugImageManager
-    YoloInferencer o-- DebugImageManager
 
     %% ========== 继承 ==========
     DoudizhuTracker --|> BaseCardTracker
@@ -76,10 +120,8 @@ classDiagram
     LayoutEditorDialog ..> service
     LayoutEditorDialog ..> coord
     LayoutEditorDialog ..> validator
-    InferenceWorker ..> run_controller_loop
-    run_controller_loop ..> GameController
-    GameController ..> create_tracker
-    create_tracker ..> DoudizhuTracker
+    InferenceWorker ..> GameController : 创建子进程实例
+    GameController ..> BaseCardTracker : 通过 create_tracker() 工厂函数创建
     BaseCardTracker ..> settings
     YoloInferencer ..> settings
 ```

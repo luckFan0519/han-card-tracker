@@ -3,6 +3,7 @@
 > 展示项目中核心类的属性、方法及关系
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor': '#1e1e1e', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#4a90d9', 'lineColor': '#888888', 'secondaryColor': '#2d2d2d', 'tertiaryColor': '#3d3d3d'}}}%%
 classDiagram
     direction TB
 
@@ -194,11 +195,6 @@ classDiagram
         -_format_zone_cards(show_cards) dict
     }
 
-    class run_controller_loop {
-        <<function>>
-        +run_controller_loop(cmd_queue, result_queue, layout_name, game_name)
-    }
-
     %% ========== 核心层 ==========
     class BaseCardTracker {
         <<abstract>>
@@ -235,10 +231,10 @@ classDiagram
         +process_played_cards(zone_key, cards)
     }
 
-    class create_tracker {
-        <<function>>
-        +create_tracker(game_name, layout_name) BaseCardTracker
-    }
+    %% ========== 工厂函数（非类） ==========
+    %% run_controller_loop(cmd_queue, result_queue, layout_name, game_name)
+    %% create_tracker(game_name, layout_name) -> BaseCardTracker
+    %% 以上两者为函数，非类，仅在关系线中标注
 
     class YoloInferencer {
         -yolo_iou: float
@@ -396,20 +392,16 @@ classDiagram
     LayoutEditorDialog ..> coord : 依赖
     LayoutEditorDialog ..> validator : 依赖
 
-    InferenceWorker ..> run_controller_loop : 创建子进程
-    run_controller_loop ..> GameController : 创建实例
+    InferenceWorker ..> GameController : 创建子进程实例
     GameController *-- ScreenCapture : 组合（创建并持有）
     GameController *-- YoloInferencer : 组合（创建并持有）
     GameController *-- LayoutAnalyzer : 组合（创建并持有）
-    GameController *-- YoloInferencer : 组合（创建并持有）
     GameController *-- BaseCardTracker : 组合（创建并持有）
-    GameController ..> create_tracker : 调用工厂函数
-    create_tracker ..> DoudizhuTracker : 创建实例
+    GameController *-- DebugImageManager : 组合（创建并持有，统一管理）
 
     DoudizhuTracker --|> BaseCardTracker : 继承
-    BaseCardTracker o-- DebugImageManager : 聚合（单例）
+    note right of DoudizhuTracker : 由 create_tracker() 根据 game_name 动态创建
     BaseCardTracker ..> settings : 依赖（状态常量/配置）
 
-    YoloInferencer o-- DebugImageManager : 聚合（单例）
     YoloInferencer ..> settings : 依赖（模型路径/布局/映射）
 ```

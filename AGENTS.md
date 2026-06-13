@@ -32,10 +32,10 @@
 ## 2) 架构与数据流（改逻辑前必须理解）
 - UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
 - 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
-- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`CardDetector`、`LayoutAnalyzer` 和 `Tracker` 四个核心组件，编排截图→纯视觉识别→空间划分→业务映射→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
+- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`YoloInferencer`、`LayoutAnalyzer`、`Tracker` 和 `DebugImageManager` 五个核心组件，编排截图→纯视觉识别→空间划分→业务映射→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
 - 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("switch_model", name)` / `("touch_time",)` / `None`（终止）。
 - 结果协议：`("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms)` / `("error", str)`。其中 `remain_cards` 是 `dict[str, int]`（每张牌剩余数量），`zone_cards` 是 `dict[str, list[list[str]]]`（各出牌区域的出牌记录，key 为 `played_zones` 的 key）。
-- 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `CardDetector.detect(img)` YOLO 纯视觉推理（计时）→ `LayoutAnalyzer.parse_and_sort()` 几何空间划分与二维排序 → `Tracker.translate_boxes_to_cards()` 业务映射（将物理框解析为扑克点数）→ `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
+- 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `YoloInferencer.detect(img)` YOLO 纯视觉推理（计时）→ `LayoutAnalyzer.parse_and_sort()` 几何空间划分与二维排序 → `Tracker.translate_boxes_to_cards()` 业务映射（将物理框解析为扑克点数）→ `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
 - 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。区域键名从游戏配置的 `layout_regions` 动态获取，由 `LayoutAnalyzer` 负责执行。
 - 排序不是置信度顺序：`LayoutAnalyzer` 先按行再按列，避免出牌串顺序错乱。
 - 多游戏支持：`BaseCardTracker`（`core/base_tracker.py`）为抽象基类，子类在 `core/games/` 目录下（如 `DoudizhuTracker`）。新增游戏只需：① 在 `config/games/` 添加 YAML 配置 ② 在 `core/games/` 添加 Tracker 子类 ③ 在 `TRACKER_REGISTRY` 注册。

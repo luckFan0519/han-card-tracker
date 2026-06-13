@@ -72,18 +72,20 @@ sequenceDiagram
 sequenceDiagram
     participant Main as main.py
     participant App as QApplication
-    participant DebugMgr as DebugImageManager
     participant Styles as styles
     participant UI as CardUI
     participant Worker as InferenceWorker
     participant SubProc as GameController (子进程)
     participant Controller as GameController
+    participant DebugMgr as DebugImageManager
     participant Tracker as BaseCardTracker
     participant Detector as YoloInferencer
+    participant Analyzer as LayoutAnalyzer
+    participant Capture as ScreenCapture
 
     Main->>App: QApplication(sys.argv)
-    Main->>DebugMgr: bootstrap(SAVE_DEBUG_IMAGES)
-    Note over DebugMgr: 关闭保存时清空 debug_img/<br/>开启时扫描已有局号
+    Main->>DebugMgr: bootstrap_static(BASE_DIR, SAVE_DEBUG_IMAGES)
+    Note over DebugMgr: 关闭保存时清空 debug_img/
     Main->>Styles: load_qss(app, QSS_PATH)
     Main->>UI: CardUI()
 
@@ -103,9 +105,11 @@ sequenceDiagram
     Detector-->>Controller: 就绪
     Controller->>Capture: ScreenCapture(window_title)
     Capture-->>Controller: 就绪
-    Controller->>Tracker: create_tracker(game_name, layout_name)
-    Note over Controller: 工厂函数根据 game_name 创建子类
-    SubProc->>Tracker: DoudizhuTracker(layout_name)
+    Controller->>DebugMgr: DebugImageManager(BASE_DIR)
+    DebugMgr-->>Controller: 就绪
+    Controller->>Tracker: create_tracker(game_name, layout_name, debug_manager)
+    Note over Controller: 工厂函数根据 game_name 创建子类，传入 debug_manager
+    SubProc->>Tracker: DoudizhuTracker(layout_name, debug_manager)
     Tracker-->>Controller: 就绪
 
     Worker->>Worker: _poll_timer.start()
@@ -277,5 +281,134 @@ sequenceDiagram
         Validator-->>LED: (True, "ok")
         LED->>Service: save_layout(name, title, layout, set_current)
         Note over LED: saved_layout_name = name<br/>accept()
+    end
+```
+
+---
+
+## 6. GameController 内部工作全流程
+
+```mermaid
+sequenceDiagram
+    participant MainLoop as run_controller_loop (子进程主循环)
+    participant GC as GameController
+    participant Capture as ScreenCapture
+    participant Detector as YoloInferencer
+    participant Analyzer as LayoutAnalyzer
+    participant Tracker as BaseCardTracker (子类)
+    participant Settings as settings
+    participant ResultQ as result_queue
+
+    Note over MainLoop: === 子进程启动阶段 ===
+    MainLoop->>GC: GameController(game_name, layout_name)
+    GC->>Settings: WINDOW_LAYOUTS[layout_name]
+    Settings-->>GC: layout_config
+    GC->>Detector: YoloInferencer()
+    Note over Detector: 加载 YOLO 模型<br/>TensorRT > ONNX > PyTorch
+    Detector-->>GC: 就绪
+    GC->>Analyzer: LayoutAnalyzer(layout_config)
+    Analyzer-->>GC: 就绪
+    GC->>Capture: ScreenCapture(window_title)
+    Capture-->>GC: 就绪
+    GC->>Tracker: «factory» create_tracker(game_name, layout_name)
+    Tracker-->>GC: Tracker 子类实例
+
+    Note over MainLoop: === 主循环：阻塞等待命令 ===
+    MainLoop->>MainLoop: cmd_queue.get(timeout=0.5)
+
+    %% ===== 检测命令 =====
+    alt cmd == "detect"
+        MainLoop->>GC: detect()
+
+        rect rgb(240, 248, 255)
+            Note over Capture: 步骤1：截图
+            GC->>Capture: capture_window()
+            Capture->>Capture: FindWindow() → BitBlt() → PIL Image
+            Capture-->>GC: PIL.Image | None
+        end
+
+        rect rgb(255, 248, 240)
+            Note over Detector: 步骤2：YOLO 推理（计时）
+            GC->>Detector: detect(img)
+            Detector->>Detector: t0 = perf_counter()
+            Detector->>Detector: model(img, conf, iou, device)
+            Detector->>Detector: yolo_ms = (perf_counter - t0) * 1000
+            Note over Detector: SAVE_DEBUG_IMAGES 时保存调试图片
+            Detector-->>GC: (raw_result, yolo_ms)
+        end
+
+        rect rgb(240, 255, 240)
+            Note over Analyzer: 步骤3：几何分区 + 二维排序
+            GC->>Analyzer: parse_and_sort(raw_result, img.size)
+            Analyzer->>Analyzer: 归一化坐标 → 像素坐标
+            Analyzer->>Analyzer: 按检测框中心点落入各区域
+            Analyzer->>Analyzer: sort_cards_by_topright_rowwise()
+            Note over Analyzer: 按行分组（中位高容差）<br/>行内按右 x 排序
+            Analyzer-->>GC: region_boxes = {区域名: [det, ...]}
+        end
+
+        rect rgb(248, 240, 255)
+            Note over Tracker: 步骤4：业务映射
+            GC->>Tracker: translate_boxes_to_cards(region_boxes)
+            Tracker->>Tracker: YOLO 标签 → 牌点名称<br/>(YOLO_TO_CARD_MAPPING)
+            Tracker-->>GC: frame_data = {区域名: [牌点, ...]}
+        end
+
+        rect rgb(255, 255, 230)
+            Note over Tracker: 步骤5：状态机更新
+            GC->>Tracker: get_cards_number(frame_data, yolo_ms)
+            Tracker->>Tracker: run_game(frame_data, yolo_ms)
+            Tracker->>Tracker: _presses_one_frame()
+            Note over Tracker: 有效性门禁：_get_validity_region()<br/>空则丢弃本帧
+            Tracker->>Tracker: 状态机转换
+            Note over Tracker: WAIT_BEGIN → HAS_STARTED<br/>→ STARTED_RECORD_CARD
+            Tracker->>Tracker: _process_all_played_zones()
+            Tracker->>Tracker: _check_card() 连续帧一致性检查
+            Tracker->>Tracker: _delete_played_cards() 扣减 remain_cards
+            Tracker-->>GC: (remain_cards, show_cards, yolo_ms)
+        end
+
+        GC->>GC: _format_zone_cards(show_cards)
+        Note over GC: 过滤非出牌区域（如手牌、底牌）
+        GC-->>MainLoop: (remain_cards, zone_cards, yolo_ms)
+
+        MainLoop->>ResultQ: put(("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms))
+        Note over ResultQ: 主进程 Worker 轮询读取
+
+    %% ===== 重置命令 =====
+    else cmd == "reset"
+        MainLoop->>GC: reset()
+        GC->>Tracker: reset()
+        Note over Tracker: state → WAIT_BEGIN<br/>清空 frame_caches / show_cards<br/>恢复 remain_cards
+
+    %% ===== 切换布局命令 =====
+    else cmd == ("switch_layout", name)
+        MainLoop->>GC: switch_layout(layout_name)
+        GC->>Settings: WINDOW_LAYOUTS[layout_name]
+        Settings-->>GC: layout_config
+        GC->>Analyzer: LayoutAnalyzer(layout_config) [重建]
+        GC->>Capture: ScreenCapture(window_title) [重建]
+        GC->>Tracker: «factory» create_tracker(game_name, layout_name) [重建]
+        Note over GC: Detector 不变，其余三个组件全部重建
+
+    %% ===== 切换模型命令 =====
+    else cmd == ("switch_model", name)
+        MainLoop->>GC: switch_model(model_name)
+        GC->>Settings: YOLO_MODEL_NAME = model_name<br/>YOLO_MODEL_PATH = _resolve_model_path()
+        GC->>Detector: YoloInferencer() [重建]
+        Note over Detector: 加载新模型权重
+        GC->>Tracker: «factory» create_tracker(game_name, layout_name) [重建]
+        Note over GC: Analyzer / Capture 不变，Detector 和 Tracker 重建
+
+    %% ===== 刷新时间命令 =====
+    else cmd == ("touch_time",)
+        MainLoop->>GC: touch_time()
+        GC->>Tracker: no_target_time = time.time()
+        Note over Tracker: 防止暂停后立即超时重置
+
+    %% ===== 终止命令 =====
+    else cmd is None
+        Note over MainLoop: break，退出主循环
+        Note over MainLoop: 子进程结束
     end
 ```

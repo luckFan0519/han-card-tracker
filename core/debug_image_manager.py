@@ -64,6 +64,24 @@ class DebugImageManager:
         else:
             self.next_game_number = self._find_next_game_number()
 
+    @staticmethod
+    def bootstrap_static(base_dir: str, debug_enabled: bool) -> None:
+        """静态方法：在主进程中执行启动初始化（不创建实例）。
+
+        关闭保存图片时清空所有调试图片；开启时无需操作（子进程会自行处理）。
+
+        Args:
+            base_dir: 项目根目录。
+            debug_enabled: 是否启用调试图片保存。
+        """
+        if not debug_enabled:
+            # 关闭保存图片时清空历史调试图
+            import shutil
+            import os
+            debug_img_dir = os.path.join(base_dir, "debug_img")
+            if os.path.isdir(debug_img_dir):
+                shutil.rmtree(debug_img_dir, ignore_errors=True)
+
     def clear_all(self) -> None:
         """清空整个调试图片目录。"""
         if os.path.isdir(self.base_dir):
@@ -193,23 +211,3 @@ class DebugImageManager:
         if isinstance(game_id, str) and game_id.isdigit():
             return (0, int(game_id))
         return (-1, 0)
-
-
-_manager: DebugImageManager | None = None
-
-
-def get_debug_image_manager(base_dir: str) -> DebugImageManager:
-    """获取调试图片管理器全局单例。
-
-    首次调用时创建实例，后续调用返回同一实例。
-
-    Args:
-        base_dir: 项目根目录，仅在首次创建时使用。
-
-    Returns:
-        DebugImageManager: 全局单例实例。
-    """
-    global _manager
-    if _manager is None:
-        _manager = DebugImageManager(base_dir)
-    return _manager

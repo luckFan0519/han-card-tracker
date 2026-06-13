@@ -26,6 +26,15 @@ class DoudizhuTracker(BaseCardTracker):
         - 本家出牌：仅记录显示，不扣减（已在开始记牌时扣减）
     """
 
+    def __init__(self, layout_name: str | None = None, debug_manager=None) -> None:
+        """初始化斗地主跟踪器。
+
+        Args:
+            layout_name: 布局名称。
+            debug_manager: 调试图片管理器实例（由 GameController 传入）。
+        """
+        super().__init__(layout_name, debug_manager)
+
     def _get_validity_region(self) -> str:
         """斗地主以地主底牌作为帧有效性判断依据。"""
         return "landlord_cards"
@@ -40,7 +49,7 @@ class DoudizhuTracker(BaseCardTracker):
 
     def on_game_started(self) -> None:
         """游戏开始时启动调试图片记录。"""
-        if settings.SAVE_DEBUG_IMAGES:
+        if settings.SAVE_DEBUG_IMAGES and self.debug_manager is not None:
             self.debug_manager.start_new_game()
 
     def on_start_recording(self) -> None:

@@ -39,6 +39,7 @@ value 为该区域的出牌记录列表（``list[list[str]]``）。
 不同游戏的区域数量和名称由配置文件决定，UI 按需动态渲染。
 """
 
+import multiprocessing as mp
 import queue
 import time
 import traceback
@@ -48,6 +49,7 @@ from core.yolo_inferencer import YoloInferencer
 from core.layout_analyzer import LayoutAnalyzer
 from core.games import create_tracker
 from core.screen_capture import ScreenCapture
+from core.debug_image_manager import DebugImageManager
 
 
 class GameController:
@@ -55,7 +57,7 @@ class GameController:
 
     运行在推理子进程中，通过组合模式持有三个核心组件：
         - ScreenCapture：负责截图
-        - CardDetector：负责纯视觉推理
+        - YoloInferencer：负责纯视觉推理
         - LayoutAnalyzer：负责几何空间划分
         - Tracker 子类：负责游戏状态机逻辑
 
@@ -63,9 +65,10 @@ class GameController:
         game_name: 当前游戏名称。
         layout_name: 当前布局名称。
         screen_capture: 窗口截图器实例。
-        card_detector: 纯视觉检测器实例。
+        yolo_inferencer: YOLO 推理器实例。
         layout_analyzer: 布局空间分析实例。
         tracker: 当前 Tracker 子类实例。
+        debug_manager: 调试图片管理器实例（由 GameController 统一管理）。
     """
 
     def __init__(self, game_name: str, layout_name: str | None = None) -> None:
@@ -85,13 +88,16 @@ class GameController:
                 raise ValueError("WINDOW_LAYOUTS 字典为空，没有可用的配置")
         
         self.layout_name: str = layout_name
-        self.layout_config: dict = settings.WINDOW_LAYOUTS[self.layout_name]
+        self.layout_config: dict[str, object] = settings.WINDOW_LAYOUTS[self.layout_name]
         
-        self.card_detector: YoloInferencer = YoloInferencer()
+        # 创建调试图片管理器（由 GameController 统一管理）
+        self.debug_manager: DebugImageManager = DebugImageManager(settings.BASE_DIR)
+        
+        self.yolo_inferencer: YoloInferencer = YoloInferencer(self.debug_manager)
         self.layout_analyzer: LayoutAnalyzer = LayoutAnalyzer(self.layout_config)
         window_title: str = self.layout_config["window_title"]
         self.screen_capture: ScreenCapture = ScreenCapture(window_title)
-        self.tracker = create_tracker(game_name, layout_name)
+        self.tracker: object = create_tracker(game_name, layout_name, self.debug_manager)
 
     def detect(self) -> tuple[dict[str, int], dict[str, list[list[str]]], float]:
         """执行一次完整检测：截图→识别→解析排版→映射→状态更新→格式化输出。
@@ -104,16 +110,24 @@ class GameController:
                 - yolo_ms (float): YOLO 推理耗时（毫秒）。
         """
         img = self.screen_capture.capture_window()
-        raw_result, yolo_ms = self.card_detector.detect(img)
+        raw_result: object | None
+        yolo_ms: float
+        raw_result, yolo_ms = self.yolo_inferencer.detect(img)
         
         # 几何布局分析（把 raw box 切分到不同区域并做二维排序）
-        region_boxes = self.layout_analyzer.parse_and_sort(raw_result, img.size if img else (0, 0))
+        # 输入：YOLO 原始检测结果 + 图片尺寸
+        # 输出：{区域名: [{"bbox": (x1,y1,x2,y2), "name": yolo_label}, ...]}
+        region_boxes: dict[str, list[dict]] = self.layout_analyzer.parse_and_sort(raw_result, img.size if img else (0, 0))
         
-        # 业务逻辑映射（解析 physical bbox 为业务中的 Card Enum）
-        frame_data = self.tracker.translate_boxes_to_cards(region_boxes)
+        # 业务逻辑映射（将 YOLO 标签转换为游戏牌点名称）
+        # 输入：{区域名: [{"bbox": ..., "name": "three"}, ...]}  （YOLO 原始标签）
+        # 输出：{区域名: ["3", "A", "小", ...]}  （通过 YOLO_TO_CARD_MAPPING 转换后的业务牌点）
+        frame_data: dict[str, list[str]] = self.tracker.translate_boxes_to_cards(region_boxes)
 
+        remain_cards: dict[str, int]
+        show_cards: dict[str, list[list[str]]]
         remain_cards, show_cards, yolo_ms = self.tracker.get_cards_number(frame_data, yolo_ms)
-        zone_cards = self._format_zone_cards(show_cards)
+        zone_cards: dict[str, list[list[str]]] = self._format_zone_cards(show_cards)
         return remain_cards, zone_cards, yolo_ms
 
     def reset(self) -> None:
@@ -132,7 +146,7 @@ class GameController:
         self.layout_analyzer = LayoutAnalyzer(self.layout_config)
         window_title: str = self.layout_config["window_title"]
         self.screen_capture = ScreenCapture(window_title)
-        self.tracker = create_tracker(self.game_name, layout_name)
+        self.tracker = create_tracker(self.game_name, layout_name, self.debug_manager)
 
     def switch_model(self, model_name: str) -> None:
         """切换 YOLO 模型，更新 settings 并重建 CardDetector 和 Tracker。
@@ -142,8 +156,8 @@ class GameController:
         """
         settings.YOLO_MODEL_NAME = model_name
         settings.YOLO_MODEL_PATH = settings._resolve_model_path(model_name)
-        self.card_detector = YoloInferencer()
-        self.tracker = create_tracker(self.game_name, self.tracker.layout_name)
+        self.yolo_inferencer = YoloInferencer(self.debug_manager)
+        self.tracker = create_tracker(self.game_name, self.tracker.layout_name, self.debug_manager)
 
     def touch_time(self) -> None:
         """刷新 no_target_time，防止暂停后立即超时重置。"""
@@ -165,8 +179,8 @@ class GameController:
 
 
 def run_controller_loop(
-    cmd_queue: object,
-    result_queue: object,
+    cmd_queue: mp.Queue,
+    result_queue: mp.Queue,
     layout_name: str,
     game_name: str,
 ) -> None:

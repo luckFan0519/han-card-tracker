@@ -12,23 +12,35 @@ from PIL import Image
 from ultralytics import YOLO
 
 import config.settings as settings
-from config.settings import BASE_DIR
-from core.debug_image_manager import get_debug_image_manager
+from core.debug_image_manager import DebugImageManager
 
 
 class YoloInferencer:
     """基于 YOLO 的纯视觉推理器。
 
     不包含业务坐标的计算和状态机的处理，只接受单帧图片返回原始边框和执行时间。
+    
+    Attributes:
+        yolo_iou: YOLO IOU 阈值。
+        yolo_conf: YOLO 置信度阈值。
+        weight_path: 模型权重路径。
+        model: 加载的 YOLO 模型。
+        device: 推理设备（cuda/cpu）。
+        debug_manager: 调试图片管理器（由 GameController 传入，可选）。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, debug_manager: DebugImageManager | None = None) -> None:
+        """初始化 YOLO 推理器。
+
+        Args:
+            debug_manager: 调试图片管理器实例（由 GameController 统一管理并传入，可选）。
+        """
         self.yolo_iou: float = settings.YOLO_IOU_THRESHOLD
         self.yolo_conf: float = settings.YOLO_CONFIDENCE_THRESHOLD
         self.weight_path: str = settings.YOLO_MODEL_PATH
 
         self.model, self.device = self.__load_model()
-        self.debug_manager = get_debug_image_manager(BASE_DIR)
+        self.debug_manager: DebugImageManager | None = debug_manager
 
     def __load_model(self) -> Tuple[YOLO, str]:
         if not os.path.exists(self.weight_path):
@@ -130,7 +142,7 @@ class YoloInferencer:
         )
         yolo_ms = (time.perf_counter() - t0) * 1000
 
-        if settings.SAVE_DEBUG_IMAGES and results:
+        if settings.SAVE_DEBUG_IMAGES and results and self.debug_manager is not None:
             try:
                 yolo_bgr = results[0].plot()
                 yolo_rgb = yolo_bgr[:, :, ::-1]
