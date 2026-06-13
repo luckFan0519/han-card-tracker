@@ -48,6 +48,40 @@ class ScreenCapture:
 
         self.window_title = window_title
 
+    @staticmethod
+    def _release_gdi(
+        mem_dc: object | None,
+        img_dc: object | None,
+        hdesktop: int | None,
+        desktop_dc: int | None,
+        bmp: object | None,
+    ) -> None:
+        """安全释放 GDI 资源，忽略二次释放等异常。
+
+        Args:
+            mem_dc: 内存设备上下文（win32ui.PyCDC）。
+            img_dc: 图像设备上下文（win32ui.PyCDC）。
+            hdesktop: 桌面窗口句柄。
+            desktop_dc: 桌面设备上下文句柄。
+            bmp: 位图对象（win32ui.PyCBitmap）。
+        """
+        for dc in (mem_dc, img_dc):
+            if dc is not None:
+                try:
+                    dc.DeleteDC()
+                except Exception:
+                    pass
+        if hdesktop is not None and desktop_dc is not None:
+            try:
+                win32gui.ReleaseDC(hdesktop, desktop_dc)
+            except Exception:
+                pass
+        if bmp is not None:
+            try:
+                win32gui.DeleteObject(bmp.GetHandle())
+            except Exception:
+                pass
+
     def capture_window(self) -> Image.Image | None:
         """截取指定窗口的图片并以 PIL Image 返回。
 
@@ -74,94 +108,46 @@ class ScreenCapture:
             print(f"没找到窗口: {self.window_title}")
             return None
 
-        # 局部 GDI 对象先初始化为 None，以便在异常路径中安全清理
+        # 局部 GDI 对象先初始化为 None，以便在 finally 中安全清理
         hdesktop = None
         desktop_dc = None
         img_dc = None
         mem_dc = None
         bmp = None
-        img = None
 
         try:
-            # 2) 获取窗口矩形并计算宽高
-            left, top, right, bot = win32gui.GetWindowRect(hwnd)
-            w = right - left
-            h = bot - top
+            try:
+                # 2) 获取窗口矩形并计算宽高
+                left, top, right, bot = win32gui.GetWindowRect(hwnd)
+                w = right - left
+                h = bot - top
 
-            # 3) 准备设备上下文并执行位块传输
-            hdesktop = win32gui.GetDesktopWindow()
-            desktop_dc = win32gui.GetWindowDC(hdesktop)
-            img_dc = win32ui.CreateDCFromHandle(desktop_dc)
-            mem_dc = img_dc.CreateCompatibleDC()
+                # 3) 准备设备上下文并执行位块传输
+                hdesktop = win32gui.GetDesktopWindow()
+                desktop_dc = win32gui.GetWindowDC(hdesktop)
+                img_dc = win32ui.CreateDCFromHandle(desktop_dc)
+                mem_dc = img_dc.CreateCompatibleDC()
 
-            bmp = win32ui.CreateBitmap()
-            bmp.CreateCompatibleBitmap(img_dc, w, h)
-            mem_dc.SelectObject(bmp)
+                bmp = win32ui.CreateBitmap()
+                bmp.CreateCompatibleBitmap(img_dc, w, h)
+                mem_dc.SelectObject(bmp)
 
-            # 将桌面指定区域拷贝到内存位图
-            mem_dc.BitBlt((0, 0), (w, h), img_dc, (left, top), win32con.SRCCOPY)
+                # 将桌面指定区域拷贝到内存位图
+                mem_dc.BitBlt((0, 0), (w, h), img_dc, (left, top), win32con.SRCCOPY)
 
-            # 4) 从位图对象读取像素并构建 PIL Image
-            bmpinfo = bmp.GetInfo()
-            bmpstr = bmp.GetBitmapBits(True)
+                # 4) 从位图对象读取像素并构建 PIL Image
+                bmpinfo = bmp.GetInfo()
+                bmpstr = bmp.GetBitmapBits(True)
 
-            # 注意：GetBitmapBits 返回的是 BGRX 格式（每像素 4 字节），PIL 需要转换
-            img = Image.frombuffer(
-                'RGB',
-                (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
-                bmpstr, 'raw', 'BGRX', 0, 1)
-
+                # 注意：GetBitmapBits 返回的是 BGRX 格式（每像素 4 字节），PIL 需要转换
+                img = Image.frombuffer(
+                    'RGB',
+                    (bmpinfo['bmWidth'], bmpinfo['bmHeight']),
+                    bmpstr, 'raw', 'BGRX', 0, 1)
+            finally:
+                # 5) 释放 GDI 资源（无论是否异常都会执行）
+                self._release_gdi(mem_dc, img_dc, hdesktop, desktop_dc, bmp)
         except Exception as e:
-            # 清理在异常路径中可能创建的 GDI 资源，并将异常上抛为 RuntimeError
-            if mem_dc is not None:
-                try:
-                    mem_dc.DeleteDC()
-                except Exception:
-                    pass
-            if img_dc is not None:
-                try:
-                    img_dc.DeleteDC()
-                except Exception:
-                    pass
-            if desktop_dc is not None and hdesktop is not None:
-                try:
-                    win32gui.ReleaseDC(hdesktop, desktop_dc)
-                except Exception:
-                    pass
-            if bmp is not None:
-                try:
-                    win32gui.DeleteObject(bmp.GetHandle())
-                except Exception:
-                    pass
             raise RuntimeError(f"窗口截图失败: {e}") from e
 
-        # 5) 释放 GDI 资源（正常路径）
-        if mem_dc is not None:
-            try:
-                mem_dc.DeleteDC()
-            except Exception:
-                pass
-        if img_dc is not None:
-            try:
-                img_dc.DeleteDC()
-            except Exception:
-                pass
-        if desktop_dc is not None and hdesktop is not None:
-            try:
-                win32gui.ReleaseDC(hdesktop, desktop_dc)
-            except Exception:
-                pass
-        if bmp is not None:
-            try:
-                win32gui.DeleteObject(bmp.GetHandle())
-            except Exception:
-                pass
-
         return img
-
-
-# if __name__ == "__main__":
-#     screen = ScreenCapture("JJ斗地主")
-#     img = screen.capture_window()
-#     img.show()
-#     img.save("screenshot.png")

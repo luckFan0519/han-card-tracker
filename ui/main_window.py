@@ -438,12 +438,13 @@ class CardUI(QMainWindow):
         self.worker.request_detect()
 
     @Slot(dict, dict, float)
-    def on_result_ready(self, remain_cards: dict, show_cards: dict, inference_ms: float):
+    def on_result_ready(self, remain_cards: dict, zone_cards: dict, inference_ms: float):
         """
         收到 worker 的识别结果：
         - 更新剩余牌数量
         - v <= 0 时样式变灰
         - v > 0 时样式恢复正常
+        - 更新各区域出牌记录
         """
         # 计算整轮耗时（从本轮开始到收到结果）
         now = time.perf_counter()
@@ -457,7 +458,7 @@ class CardUI(QMainWindow):
 
         # 更新出牌文本（仅在内容变化时更新）
         played_signature = tuple(
-            (key, tuple(tuple(x) if isinstance(x, list) else x for x in show_cards.get(key, [])))
+            (key, tuple(tuple(x) if isinstance(x, list) else x for x in zone_cards.get(key, [])))
             for zone in settings.PLAYED_ZONES
             for key in [zone["key"]]
         )
@@ -467,7 +468,7 @@ class CardUI(QMainWindow):
                 label = zone["label"]
                 lbl = self.played_cards_labels.get(key)
                 if lbl:
-                    lbl.setText(f"   {label}     " + trans_yolo_names_to_string(show_cards.get(key, [])))
+                    lbl.setText(f"   {label}     " + trans_yolo_names_to_string(zone_cards.get(key, [])))
             self._last_played_signature = played_signature
 
         for card in self.card_order:

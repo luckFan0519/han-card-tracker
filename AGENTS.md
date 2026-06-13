@@ -24,7 +24,7 @@
 
 ## 1) 先看什么（最快进入状态）
 - 入口是 `main.py`：创建 `QApplication`、加载 `ui/ui.qss`、启动 `CardUI`。
-- 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/games/<game>.py` -> `core/base_tracker.py` -> `core/card_detector.py` -> `core/screen_capture.py`。
+- 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/game_controller.py` -> `core/games/<game>.py` -> `core/base_tracker.py` -> `core/card_detector.py` -> `core/screen_capture.py`。
 - 配置集中在 `config/settings.py`（运行时常量 + 保存函数）与 `config/config.yaml`（可编辑参数）。
 - 游戏配置在 `config/games/` 目录下，每个游戏一个 YAML 文件（如 `doudizhu.yaml`）。
 - AI 开发规范详见 `AI开发标准/` 目录（代码注释规范 + 类型注解规范），已在第 0 节概述。
@@ -32,10 +32,10 @@
 ## 2) 架构与数据流（改逻辑前必须理解）
 - UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
 - 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
-- 子进程主循环：`_inference_loop()` 在子进程中通过 `create_tracker(game_name)` 工厂函数创建对应游戏子类，运行 `tracker.get_cards_number()`，通过命令队列接收指令、结果队列回传数据。
+- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`CardDetector` 和 `Tracker` 三个核心组件，编排截图→识别→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
 - 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("switch_model", name)` / `("touch_time",)` / `None`（终止）。
-- 结果协议：`("ok", (remain_cards, show_cards), yolo_ms)` / `("error", str)`。其中 `show_cards` 是 `dict[str, list[list[str]]]`，key 为出牌区域键名。
-- 检测流水线：`CardDetector.detect()` = 截图 -> YOLO 推理（计时） -> 保存调试图片（不计入推理耗时） -> 按 layout 分区 -> YOLO 类名映射为牌点。
+- 结果协议：`("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms)` / `("error", str)`。其中 `remain_cards` 是 `dict[str, int]`（每张牌剩余数量），`zone_cards` 是 `dict[str, list[list[str]]]`（各出牌区域的出牌记录，key 为 `played_zones` 的 key）。
+- 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `CardDetector.detect(img)` YOLO 推理（计时）→ 保存调试图片（不计入推理耗时）→ 按 layout 分区 → YOLO 类名映射为牌点 → `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
 - 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。区域键名从游戏配置的 `layout_regions` 动态获取。
 - 排序不是置信度顺序：`sort_cards_by_topright_rowwise()` 先按行再按列，避免出牌串顺序错乱。
 - 多游戏支持：`BaseCardTracker`（`core/base_tracker.py`）为抽象基类，子类在 `core/games/` 目录下（如 `DoudizhuTracker`）。新增游戏只需：① 在 `config/games/` 添加 YAML 配置 ② 在 `core/games/` 添加 Tracker 子类 ③ 在 `TRACKER_REGISTRY` 注册。

@@ -17,7 +17,8 @@ classDiagram
 
     %% ========== 推理层 ==========
     class InferenceWorker
-    class _inference_loop
+    class GameController
+    class run_controller_loop
 
     %% ========== 核心层 ==========
     class BaseCardTracker
@@ -52,8 +53,9 @@ classDiagram
     LayoutEditorDialog *-- RectCanvas
     SettingsDialog *-- LayoutComboView
     SettingsDialog *-- LayoutItemDelegate
-    BaseCardTracker *-- CardDetector
-    CardDetector *-- ScreenCapture
+    GameController *-- ScreenCapture
+    GameController *-- CardDetector
+    GameController *-- BaseCardTracker
 
     %% ========== 聚合（按需创建/共享单例） ==========
     CardUI o-- SettingsDialog
@@ -72,12 +74,12 @@ classDiagram
     LayoutEditorDialog ..> service
     LayoutEditorDialog ..> coord
     LayoutEditorDialog ..> validator
-    InferenceWorker ..> _inference_loop
-    _inference_loop ..> create_tracker
+    InferenceWorker ..> run_controller_loop
+    run_controller_loop ..> GameController
+    GameController ..> create_tracker
     create_tracker ..> DoudizhuTracker
     BaseCardTracker ..> settings
     CardDetector ..> settings
-    ScreenCapture ..> settings
 ```
 
 ## 关系图例
@@ -92,8 +94,10 @@ classDiagram
 ## 数据流主线
 
 ```
-CardUI → InferenceWorker → _inference_loop(子进程) → create_tracker → DoudizhuTracker → CardDetector → ScreenCapture
-                                                                            ↓
-                                                                       BaseCardTracker
-                                                                       YOLO Model
+CardUI → InferenceWorker → run_controller_loop(子进程) → GameController ─┬─ ScreenCapture (截图)
+                                                                          ├─ CardDetector (YOLO识别)
+                                                                          └─ Tracker (状态机)
+                                                                              ↓
+                                                                         DoudizhuTracker
+                                                                         YOLO Model
 ```

@@ -1,7 +1,9 @@
 """牌面检测模块。
 
-封装 YOLO 模型加载、窗口截图、推理、布局分区、排序和牌点映射，
-提供 ``detect()`` 作为一次完整检测的入口。
+封装 YOLO 模型加载、推理、布局分区、排序和牌点映射，
+提供 ``detect(image)`` 作为一次完整检测的入口。
+
+截图由外部（GameController）负责，本模块只接收图片并输出检测结果。
 """
 
 import os
@@ -15,11 +17,12 @@ from ultralytics import YOLO
 import config.settings as settings
 from config.settings import BASE_DIR, YOLO_TO_CARD_MAPPING
 from core.debug_image_manager import get_debug_image_manager
-from core.screen_capture import ScreenCapture
 
 
 class CardDetector:
-    """基于 YOLO 的牌面检测器，执行截图→推理→分区→排序→映射流水线。
+    """基于 YOLO 的牌面检测器，执行推理→分区→排序→映射流水线。
+
+    截图由外部负责，本类只接收 PIL Image 并输出各区域检测结果。
 
     模型加载优先级::
 
@@ -32,15 +35,13 @@ class CardDetector:
         weight_path: YOLO 权重文件路径。
         layout_name: 当前布局名称。
         layout_config: 当前布局配置字典。
-        window_title: 目标窗口标题。
-        screen_capture: 窗口截图器实例。
         model: YOLO 模型实例。
         device: 推理设备标识（"cuda" 或 "cpu"）。
         debug_manager: 调试图片管理器。
     """
 
     def __init__(self, layout_name: str | None = None) -> None:
-        """初始化牌面检测器，加载模型和截图器。
+        """初始化牌面检测器，加载模型。
 
         Args:
             layout_name: 布局名称。为 None 或不存在时自动使用第一个可用配置。
@@ -63,8 +64,6 @@ class CardDetector:
 
         self.layout_name: str = layout_name
         self.layout_config: dict = settings.WINDOW_LAYOUTS[layout_name]
-        self.window_title: str = self.layout_config["window_title"]
-        self.screen_capture: ScreenCapture = ScreenCapture(self.window_title)
         self.model, self.device = self.__load_model()
         self.debug_manager = get_debug_image_manager(BASE_DIR)
 
@@ -302,15 +301,19 @@ class CardDetector:
 
         return results
 
-    def __perform_yolo_recognition(self) -> Tuple[object, float]:
+    def __perform_yolo_recognition(self, img: Image.Image | None) -> Tuple[object, float]:
         """执行一次 YOLO 推理，仅对 model() 调用计时。
 
         调试图片保存在计时之外，不影响推理耗时统计。
 
+        Args:
+            img: 待检测的 PIL Image，为 None 时返回空结果。
+
         Returns:
             Tuple[object, float]: (YOLO results, 推理耗时毫秒)。
         """
-        img = self.screen_capture.capture_window()
+        if img is None:
+            return [], 0.0
 
         t0 = time.perf_counter()
         results = self.model(
@@ -323,7 +326,7 @@ class CardDetector:
         )
         yolo_ms = (time.perf_counter() - t0) * 1000
 
-        if settings.SAVE_DEBUG_IMAGES and img is not None and results:
+        if settings.SAVE_DEBUG_IMAGES and results:
             try:
                 yolo_bgr = results[0].plot()
                 yolo_rgb = yolo_bgr[:, :, ::-1]
@@ -350,15 +353,20 @@ class CardDetector:
             res.append(name)
         return res
 
-    def detect(self) -> tuple[dict[str, list[str]], float]:
-        """执行一次完整的检测流水线：截图→推理→分区→排序→映射。
+    def detect(self, img: Image.Image | None) -> tuple[dict[str, list[str]], float]:
+        """执行一次完整的检测流水线：推理→分区→排序→映射。
+
+        Args:
+            img: 待检测的 PIL Image，由外部截图后传入。为 None 时返回空结果。
 
         Returns:
             tuple: 包含两个元素：
                 - frame_data (dict[str, list[str]]): 各区域的牌点列表，key 为区域名。
                 - yolo_ms (float): YOLO 推理耗时（毫秒）。
         """
-        r, yolo_ms = self.__perform_yolo_recognition()
+        r, yolo_ms = self.__perform_yolo_recognition(img)
+        if not r:
+            return {key: [] for key in self.layout_config["layout"]}, 0.0
         parsed = self.parse_result(r[0])
         frame_data = {key: self.__trans_yolo_to_card(dets) for key, dets in parsed.items()}
         return frame_data, yolo_ms

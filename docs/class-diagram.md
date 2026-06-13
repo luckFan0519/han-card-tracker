@@ -24,7 +24,7 @@ classDiagram
         -_last_depleted_values: dict
         -_last_played_signature: tuple
         +request_one_update()
-        +on_result_ready(remain_cards, show_cards, inference_ms)
+        +on_result_ready(remain_cards, zone_cards, inference_ms)
         +on_worker_error(err_text)
         +on_worker_finished()
         +on_settings_clicked()
@@ -180,16 +180,28 @@ classDiagram
         -_poll_result()
     }
 
-    class _inference_loop {
+    class GameController {
+        -game_name: str
+        -screen_capture: ScreenCapture
+        -card_detector: CardDetector
+        -tracker: BaseCardTracker
+        +detect() tuple
+        +reset()
+        +switch_layout(layout_name)
+        +switch_model(model_name)
+        +touch_time()
+        -_format_zone_cards(show_cards) dict
+    }
+
+    class run_controller_loop {
         <<function>>
-        +_inference_loop(cmd_queue, result_queue, layout_name, game_name)
+        +run_controller_loop(cmd_queue, result_queue, layout_name, game_name)
     }
 
     %% ========== 核心层 ==========
     class BaseCardTracker {
         <<abstract>>
         #layout_name: str
-        #card_detector: CardDetector
         #state: int
         #frame_caches: dict
         #show_cards: dict
@@ -199,9 +211,9 @@ classDiagram
         #debug_manager: DebugImageManager
         #_last_yolo_ms: float
         +reset()
-        +get_cards_number() tuple
-        +run_game()
-        #_presses_one_frame()
+        +get_cards_number(frame_data, yolo_ms) tuple
+        +run_game(frame_data, yolo_ms)
+        #_presses_one_frame(frame_data, yolo_ms)
         #_check_card(lst) bool
         #_delete_played_cards(lst)
         #_process_all_played_zones()
@@ -233,18 +245,16 @@ classDiagram
         -weight_path: str
         -layout_name: str
         -layout_config: dict
-        -window_title: str
-        -screen_capture: ScreenCapture
         -model: YOLO
         -device: str
         -debug_manager: DebugImageManager
-        +detect() tuple[dict, float]
+        +detect(img) tuple[dict, float]
         +parse_result(r) dict
         +sort_cards_by_topright_rowwise(dets, max_rows) list
         -__load_model() tuple
         -__load_tensorrt(engine_path) YOLO
         -__load_onnx(onnx_path) YOLO
-        -__perform_yolo_recognition() tuple
+        -__perform_yolo_recognition(img) tuple
         -__trans_yolo_to_card(r) list
     }
 
@@ -385,18 +395,18 @@ classDiagram
     LayoutEditorDialog ..> coord : 依赖
     LayoutEditorDialog ..> validator : 依赖
 
-    InferenceWorker ..> _inference_loop : 创建子进程
-    _inference_loop ..> create_tracker : 调用工厂函数
+    InferenceWorker ..> run_controller_loop : 创建子进程
+    run_controller_loop ..> GameController : 创建实例
+    GameController *-- ScreenCapture : 组合（创建并持有）
+    GameController *-- CardDetector : 组合（创建并持有）
+    GameController *-- BaseCardTracker : 组合（创建并持有）
+    GameController ..> create_tracker : 调用工厂函数
     create_tracker ..> DoudizhuTracker : 创建实例
 
     DoudizhuTracker --|> BaseCardTracker : 继承
-    BaseCardTracker *-- CardDetector : 组合
     BaseCardTracker o-- DebugImageManager : 聚合（单例）
     BaseCardTracker ..> settings : 依赖（状态常量/配置）
 
-    CardDetector *-- ScreenCapture : 组合
     CardDetector o-- DebugImageManager : 聚合（单例）
     CardDetector ..> settings : 依赖（模型路径/布局/映射）
-
-    ScreenCapture ..> settings : 依赖（window_title）
 ```

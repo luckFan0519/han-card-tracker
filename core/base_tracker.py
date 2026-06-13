@@ -3,6 +3,8 @@
 
 通过连续帧确认机制驱动三阶段状态机（等待开始 → 已开始 → 记牌中），
 提供通用的记牌器骨架，子类实现游戏特定的状态转换条件和出牌处理逻辑。
+
+截图和 YOLO 检测由 GameController 编排，Tracker 只负责状态机逻辑。
 """
 
 from __future__ import annotations
@@ -12,12 +14,14 @@ from abc import ABC, abstractmethod
 
 import config.settings as settings
 from config.settings import BASE_DIR, HAS_STARTED, STARTED_RECORD_CARD, WAIT_BEGIN
-from core.card_detector import CardDetector
 from core.debug_image_manager import get_debug_image_manager
 
 
 class BaseCardTracker(ABC):
-    """牌局状态跟踪器基类，驱动检测流水线并维护剩余牌数。
+    """牌局状态跟踪器基类，驱动状态机并维护剩余牌数。
+
+    截图和检测由外部（GameController）编排，Tracker 通过
+    ``process_frame(frame_data, yolo_ms)`` 接收每帧检测结果。
 
     状态机::
 
@@ -34,7 +38,6 @@ class BaseCardTracker(ABC):
 
     Attributes:
         layout_name: 当前布局名称。
-        card_detector: 牌检测器实例。
         state: 当前状态（WAIT_BEGIN / HAS_STARTED / STARTED_RECORD_CARD）。
         frame_caches: 各区域帧缓存字典，key 为区域名，value 为帧列表。
         show_cards: 各出牌区域已确认的出牌记录字典。
@@ -49,10 +52,9 @@ class BaseCardTracker(ABC):
         """初始化牌局跟踪器。
 
         Args:
-            layout_name: 布局名称。为 None 时 CardDetector 自动使用第一个可用配置。
+            layout_name: 布局名称。为 None 时自动使用第一个可用配置。
         """
         self.layout_name: str | None = layout_name
-        self.card_detector: CardDetector = CardDetector(layout_name=layout_name)
         self.state: int = WAIT_BEGIN
         self.remain_cards: dict[str, int] = settings.TOTAL_CARDS.copy()
         self.no_target_time: float = time.time()
@@ -78,15 +80,19 @@ class BaseCardTracker(ABC):
         self.has_found_empty = {z["key"]: False for z in settings.PLAYED_ZONES}
         self.remain_cards = settings.TOTAL_CARDS.copy()
 
-    def _presses_one_frame(self) -> None:
+    def _presses_one_frame(self, frame_data: dict[str, list[str]], yolo_ms: float) -> None:
         """处理一帧检测结果，更新帧缓存。
 
         以 ``_get_validity_region()`` 返回的区域是否为空作为本帧有效性门禁：
         空则直接丢弃，不更新状态也不重置 no_target_time；
         非空则将本帧数据追加到缓存，并重置 no_target_time。
         缓存长度超过 FRAME_LENGTH 时丢弃最旧帧。
+
+        Args:
+            frame_data: 各区域的牌点列表，key 为区域名。
+            yolo_ms: YOLO 推理耗时（毫秒）。
         """
-        frame_data, self._last_yolo_ms = self.card_detector.detect()
+        self._last_yolo_ms = yolo_ms
 
         valid_key = self._get_validity_region()
         if len(frame_data.get(valid_key, [])) == 0:
@@ -203,13 +209,17 @@ class BaseCardTracker(ABC):
                     self.has_found_empty[key] = True
                 self.process_played_cards(key, current)
 
-    def run_game(self) -> None:
+    def run_game(self, frame_data: dict[str, list[str]], yolo_ms: float) -> None:
         """驱动一帧的状态机转换和出牌记录。
 
-        依次执行：采集一帧 → 按当前状态检查条件 → 状态转换与扣牌。
+        依次执行：接收一帧数据 → 按当前状态检查条件 → 状态转换与扣牌。
         三个状态的处理互不排斥（使用 if 而非 elif），允许同一帧内连续推进状态。
+
+        Args:
+            frame_data: 各区域的牌点列表，key 为区域名。
+            yolo_ms: YOLO 推理耗时（毫秒）。
         """
-        self._presses_one_frame()
+        self._presses_one_frame(frame_data, yolo_ms)
 
         if self.state == WAIT_BEGIN:
             if self.should_start_game():
@@ -224,10 +234,14 @@ class BaseCardTracker(ABC):
         if self.state == STARTED_RECORD_CARD:
             self._process_all_played_zones()
 
-    def get_cards_number(self) -> tuple[dict[str, int], dict[str, list[list[str]]], float]:
-        """执行一帧检测并返回当前牌局数据。
+    def get_cards_number(self, frame_data: dict[str, list[str]], yolo_ms: float) -> tuple[dict[str, int], dict[str, list[list[str]]], float]:
+        """接收一帧检测结果并返回当前牌局数据。
 
         超过 RESET_TIME 未检测到有效目标时自动重置。
+
+        Args:
+            frame_data: 各区域的牌点列表，key 为区域名。
+            yolo_ms: YOLO 推理耗时（毫秒）。
 
         Returns:
             tuple: 包含三个元素：
@@ -235,7 +249,7 @@ class BaseCardTracker(ABC):
                 - show_cards (dict[str, list[list[str]]]): 各出牌区域的出牌记录。
                 - _last_yolo_ms (float): 最近一次 YOLO 推理耗时（毫秒）。
         """
-        self.run_game()
+        self.run_game(frame_data, yolo_ms)
         tme = time.time()
         if tme - self.no_target_time > settings.RESET_TIME:
             self.reset()

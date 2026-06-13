@@ -12,7 +12,8 @@ sequenceDiagram
     participant UI as CardUI
     participant Worker as InferenceWorker
     participant CmdQ as cmd_queue
-    participant SubProc as _inference_loop (子进程)
+    participant SubProc as GameController (子进程)
+    participant Controller as GameController
     participant Tracker as BaseCardTracker
     participant Detector as CardDetector
     participant Capture as ScreenCapture
@@ -26,31 +27,34 @@ sequenceDiagram
     Worker->>CmdQ: put("detect")
 
     CmdQ-->>SubProc: get("detect")
-    SubProc->>Tracker: get_cards_number()
-    Tracker->>Tracker: run_game()
-    Tracker->>Tracker: __presses_one_frame()
-    Tracker->>Detector: detect()
-
-    Detector->>Capture: capture_window()
-    Capture-->>Detector: PIL.Image
+    SubProc->>Controller: detect()
+    Controller->>Capture: capture_window()
+    Capture-->>Controller: PIL.Image
+    Controller->>Detector: detect(img)
     Detector->>YOLO: model(img, conf, iou, device)
     Note over Detector: time.perf_counter() 计时
     YOLO-->>Detector: results
     Detector->>Detector: parse_result(results[0])
     Note over Detector: 按布局分区 + sort_cards_by_topright_rowwise
     Detector->>Detector: __trans_yolo_to_card()
-    Detector-->>Tracker: (frame_data: dict[str, list[str]], yolo_ms)
+    Detector-->>Controller: (frame_data: dict[str, list[str]], yolo_ms)
+
+    Controller->>Tracker: get_cards_number(frame_data, yolo_ms)
+    Tracker->>Tracker: run_game(frame_data, yolo_ms)
+    Tracker->>Tracker: _presses_one_frame(frame_data, yolo_ms)
 
     Tracker->>Tracker: _check_card() 帧稳定性检查
     Tracker->>Tracker: 状态机: WAIT_BEGIN → HAS_STARTED → STARTED_RECORD_CARD
     Tracker->>Tracker: _delete_played_cards() 扣牌
-    Tracker-->>SubProc: (remain_cards, show_cards: dict, yolo_ms)
+    Tracker-->>Controller: (remain_cards, show_cards: dict, yolo_ms)
+    Controller->>Controller: _format_zone_cards(show_cards)
+    Controller-->>SubProc: (remain_cards, zone_cards, yolo_ms)
 
-    SubProc->>ResultQ: put(("ok", result, yolo_ms))
+    SubProc->>ResultQ: put(("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms))
 
     Note over Worker: _poll_timer (20ms) 轮询
     Worker->>ResultQ: get_nowait()
-    Worker->>UI: result_ready.emit(remain_cards, show_cards, inference_ms)
+    Worker->>UI: result_ready.emit(remain_cards, zone_cards, inference_ms)
 
     UI->>UI: on_result_ready()
     Note over UI: 更新标题栏耗时<br/>更新出牌文本<br/>更新牌数量和depleted样式
@@ -70,7 +74,8 @@ sequenceDiagram
     participant Styles as styles
     participant UI as CardUI
     participant Worker as InferenceWorker
-    participant SubProc as _inference_loop (子进程)
+    participant SubProc as GameController (子进程)
+    participant Controller as GameController
     participant Tracker as BaseCardTracker
     participant Detector as CardDetector
 
@@ -85,15 +90,18 @@ sequenceDiagram
     UI->>Worker: InferenceWorker(layout_name, game_name)
     UI->>Worker: worker.start()
 
-    Worker->>SubProc: mp.Process(target=_inference_loop)
-    SubProc->>SubProc: create_tracker(game_name, layout_name)
-    Note over SubProc: 工厂函数根据 game_name 创建子类
-    SubProc->>Tracker: DoudizhuTracker(layout_name)
-    Tracker->>Detector: CardDetector(layout_name)
+    Worker->>SubProc: mp.Process(target=run_controller_loop)
+    SubProc->>Controller: GameController(game_name, layout_name)
+    Controller->>Detector: CardDetector(layout_name)
     Detector->>Detector: __load_model()
     Note over Detector: GPU: TensorRT > PyTorch CUDA<br/>CPU: ONNX > PyTorch CPU
-    Detector-->>Tracker: 就绪
-    Tracker-->>SubProc: 就绪
+    Detector-->>Controller: 就绪
+    Controller->>Capture: ScreenCapture(window_title)
+    Capture-->>Controller: 就绪
+    Controller->>Tracker: create_tracker(game_name, layout_name)
+    Note over Controller: 工厂函数根据 game_name 创建子类
+    SubProc->>Tracker: DoudizhuTracker(layout_name)
+    Tracker-->>Controller: 就绪
 
     Worker->>Worker: _poll_timer.start()
     UI->>UI: timer.start()
@@ -170,17 +178,15 @@ sequenceDiagram
     participant UI as CardUI
     participant Worker as InferenceWorker
     participant Tracker as BaseCardTracker
-    participant Detector as CardDetector
 
     Note over Tracker: state = WAIT_BEGIN
 
     Timer->>UI: timeout
     UI->>Worker: request_detect()
-    Worker->>Tracker: get_cards_number()
-    Tracker->>Detector: detect()
+    Worker->>Tracker: get_cards_number(frame_data, yolo_ms)
 
     Note over Tracker: === WAIT_BEGIN 阶段 ===
-    Detector-->>Tracker: validity_region 非空
+    Note over Tracker: validity_region 非空
     Tracker->>Tracker: should_start_game() 稳定?
     alt 连续帧不稳定
         Note over Tracker: 保持 WAIT_BEGIN
@@ -200,7 +206,7 @@ sequenceDiagram
 
     Note over Tracker: === STARTED_RECORD_CARD 阶段 ===
     loop 每次检测
-        Detector-->>Tracker: frame_data (各区域)
+        Note over Tracker: frame_data (各区域)
         Tracker->>Tracker: _process_all_played_zones()
         Tracker->>Tracker: _check_card() 各区域独立检查
         alt 检测到出牌变化
