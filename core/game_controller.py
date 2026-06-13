@@ -49,7 +49,7 @@ from core.yolo_inferencer import YoloInferencer
 from core.layout_analyzer import LayoutAnalyzer
 from core.games import create_tracker
 from core.screen_capture import ScreenCapture
-from core.debug_image_manager import DebugImageManager
+from core.image_saver import ImageSaver
 
 
 class GameController:
@@ -90,8 +90,8 @@ class GameController:
         self.layout_name: str = layout_name
         self.layout_config: dict[str, object] = settings.WINDOW_LAYOUTS[self.layout_name]
         
-        # 创建调试图片管理器（由 GameController 统一管理）
-        self.debug_manager: DebugImageManager = DebugImageManager(settings.BASE_DIR)
+        # 创建调试图片保存器（由 GameController 统一管理）
+        self.debug_manager: ImageSaver = ImageSaver(settings.BASE_DIR)
         
         self.yolo_inferencer: YoloInferencer = YoloInferencer(self.debug_manager)
         self.layout_analyzer: LayoutAnalyzer = LayoutAnalyzer(self.layout_config)

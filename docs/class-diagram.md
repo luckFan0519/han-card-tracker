@@ -205,7 +205,7 @@ classDiagram
         #has_found_empty: dict
         #remain_cards: dict
         #no_target_time: float
-        #debug_manager: DebugImageManager
+        #debug_manager: ImageSaver
         #_last_yolo_ms: float
         +reset()
         +get_cards_number(frame_data, yolo_ms) tuple
@@ -242,7 +242,7 @@ classDiagram
         -weight_path: str
         -model: YOLO
         -device: str
-        -debug_manager: DebugImageManager
+        -debug_manager: ImageSaver
         +detect(img) tuple[object, float]
         -__load_model() tuple
         -__load_tensorrt(engine_path) YOLO
@@ -260,7 +260,7 @@ classDiagram
         +capture_window() PIL.Image
     }
 
-    class DebugImageManager {
+    class ImageSaver {
         -base_dir: str
         -raw_root: str
         -yolo_root: str
@@ -397,7 +397,7 @@ classDiagram
     GameController *-- YoloInferencer : 组合（创建并持有）
     GameController *-- LayoutAnalyzer : 组合（创建并持有）
     GameController *-- BaseCardTracker : 组合（创建并持有）
-    GameController *-- DebugImageManager : 组合（创建并持有，统一管理）
+    GameController *-- ImageSaver : 组合（创建并持有，统一管理）
 
     DoudizhuTracker --|> BaseCardTracker : 继承
     note right of DoudizhuTracker : 由 create_tracker() 根据 game_name 动态创建

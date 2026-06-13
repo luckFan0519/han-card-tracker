@@ -1,7 +1,7 @@
-"""调试图片管理模块。
+"""调试图片保存模块。
 
-提供按局（game）组织的调试图片存储，支持自动清理旧局、帧上限控制，
-以及全局单例访问。保存内容为"成对帧"：原始截图 + YOLO 标注图。
+提供按局（game）组织的调试图片存储，支持自动清理旧局、帧上限控制。
+保存内容为"成对帧"：原始截图 + YOLO 标注图。
 """
 
 import os
@@ -10,7 +10,7 @@ import shutil
 from PIL import Image
 
 
-class DebugImageManager:
+class ImageSaver:
     """管理调试图片的按局存储与自动清理。
 
     目录结构::
@@ -32,7 +32,7 @@ class DebugImageManager:
     """
 
     def __init__(self, base_dir: str) -> None:
-        """初始化调试图片管理器。
+        """初始化调试图片保存器。
 
         Args:
             base_dir: 项目根目录，调试图片将存放在其下的 ``debug_img/`` 子目录。

@@ -12,7 +12,7 @@ from PIL import Image
 from ultralytics import YOLO
 
 import config.settings as settings
-from core.debug_image_manager import DebugImageManager
+from core.image_saver import ImageSaver
 
 
 class YoloInferencer:
@@ -26,21 +26,21 @@ class YoloInferencer:
         weight_path: 模型权重路径。
         model: 加载的 YOLO 模型。
         device: 推理设备（cuda/cpu）。
-        debug_manager: 调试图片管理器（由 GameController 传入，可选）。
+        debug_manager: 调试图片保存器（由 GameController 传入，可选）。
     """
 
-    def __init__(self, debug_manager: DebugImageManager | None = None) -> None:
+    def __init__(self, debug_manager: ImageSaver | None = None) -> None:
         """初始化 YOLO 推理器。
 
         Args:
-            debug_manager: 调试图片管理器实例（由 GameController 统一管理并传入，可选）。
+            debug_manager: 调试图片保存器实例（由 GameController 统一管理并传入，可选）。
         """
         self.yolo_iou: float = settings.YOLO_IOU_THRESHOLD
         self.yolo_conf: float = settings.YOLO_CONFIDENCE_THRESHOLD
         self.weight_path: str = settings.YOLO_MODEL_PATH
 
         self.model, self.device = self.__load_model()
-        self.debug_manager: DebugImageManager | None = debug_manager
+        self.debug_manager: ImageSaver | None = debug_manager
 
     def __load_model(self) -> Tuple[YOLO, str]:
         if not os.path.exists(self.weight_path):

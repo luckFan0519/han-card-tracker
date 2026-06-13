@@ -32,7 +32,7 @@
 ## 2) 架构与数据流（改逻辑前必须理解）
 - UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
 - 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
-- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`YoloInferencer`、`LayoutAnalyzer`、`Tracker` 和 `DebugImageManager` 五个核心组件，编排截图→纯视觉识别→空间划分→业务映射→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
+- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`YoloInferencer`、`LayoutAnalyzer`、`Tracker` 和 `ImageSaver` 五个核心组件，编排截图→纯视觉识别→空间划分→业务映射→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
 - 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("switch_model", name)` / `("touch_time",)` / `None`（终止）。
 - 结果协议：`("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms)` / `("error", str)`。其中 `remain_cards` 是 `dict[str, int]`（每张牌剩余数量），`zone_cards` 是 `dict[str, list[list[str]]]`（各出牌区域的出牌记录，key 为 `played_zones` 的 key）。
 - 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `YoloInferencer.detect(img)` YOLO 纯视觉推理（计时）→ `LayoutAnalyzer.parse_and_sort()` 几何空间划分与二维排序 → `Tracker.translate_boxes_to_cards()` 业务映射（将物理框解析为扑克点数）→ `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
@@ -78,7 +78,7 @@
 - 运行主程序：`python main.py`。
 
 ## 7) 调试截图资产约定（新增逻辑）
-- 统一由 `core/debug_image_manager.py` 管理，不要在 `YoloInferencer`/`BaseCardTracker` 外部手写落盘逻辑。
+- 统一由 `core/image_saver.py` 管理，不要在 `YoloInferencer`/`BaseCardTracker` 外部手写落盘逻辑。
 - 保存内容是"成对帧"：原始截图到 `debug_img/row/`，YOLO 标注图到 `debug_img/yolo/`，同局同帧同名。
 - 每局目录命名固定为 `game_N`（`game_1`, `game_2`, ...），帧命名固定为 `1.png` 递增。
 - 单局最多 `1000` 张；达到上限后该局后续帧不保存，并且仅打印一次提示（避免刷屏）。

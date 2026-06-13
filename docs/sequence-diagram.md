@@ -77,7 +77,7 @@ sequenceDiagram
     participant Worker as InferenceWorker
     participant SubProc as GameController (子进程)
     participant Controller as GameController
-    participant DebugMgr as DebugImageManager
+    participant DebugMgr as ImageSaver
     participant Tracker as BaseCardTracker
     participant Detector as YoloInferencer
     participant Analyzer as LayoutAnalyzer
@@ -105,7 +105,7 @@ sequenceDiagram
     Detector-->>Controller: 就绪
     Controller->>Capture: ScreenCapture(window_title)
     Capture-->>Controller: 就绪
-    Controller->>DebugMgr: DebugImageManager(BASE_DIR)
+    Controller->>DebugMgr: ImageSaver(BASE_DIR)
     DebugMgr-->>Controller: 就绪
     Controller->>Tracker: create_tracker(game_name, layout_name, debug_manager)
     Note over Controller: 工厂函数根据 game_name 创建子类，传入 debug_manager

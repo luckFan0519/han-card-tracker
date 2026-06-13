@@ -65,8 +65,8 @@ classDiagram
     class ScreenCapture {
         +capture_window()
     }
-    class DebugImageManager {
-        +save_debug_pair()
+    class ImageSaver {
+        +save_frame()
         +bootstrap()
     }
 
@@ -103,7 +103,7 @@ classDiagram
     GameController *-- YoloInferencer
     GameController *-- LayoutAnalyzer
     GameController *-- BaseCardTracker
-    GameController *-- DebugImageManager
+    GameController *-- ImageSaver
 
     %% ========== 聚合（按需创建/共享单例） ==========
     CardUI o-- SettingsDialog

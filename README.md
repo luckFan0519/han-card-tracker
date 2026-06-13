@@ -178,7 +178,7 @@ ddz_cards_tracker_8/
 │   ├── card_tracker.py         # 记牌逻辑（状态机）
 │   ├── yolo_inferencer.py     # YOLO 推理器（纯视觉推理）
 │   ├── inference_process.py    # 多进程推理（子进程运行YOLO，避免UI卡顿）
-│   ├── debug_image_manager.py  # 调试截图管理（按局保存/清理）
+│   ├── image_saver.py          # 调试截图保存（按局保存/清理）
 │   └── screen_capture.py       # 窗口截图
 ├── debug_img/                  # 调试截图输出目录（运行时生成）
 │   ├── row/
