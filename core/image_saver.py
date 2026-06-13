@@ -47,6 +47,10 @@ class ImageSaver:
         self.next_game_number: int = 1
         self.max_games: int = 3
         self.max_images_per_game: int = 1000
+        # Whether saving is currently enabled. This flag is managed by
+        # GameController.update_settings via set_enabled(), and controls
+        # whether save_frame will actually persist images.
+        self.enabled: bool = False
 
     def bootstrap(self, debug_enabled: bool) -> None:
         """启动时执行一次性初始化。
@@ -56,10 +60,22 @@ class ImageSaver:
         Args:
             debug_enabled: 是否启用游戏图片保存。
         """
-        self.current_game_id = None
-        self.current_index = 0
-        self.limit_reached_notified = False
-        self.next_game_number = self._find_next_game_number()
+        # Ensure root folders exist
+        os.makedirs(self.raw_root, exist_ok=True)
+        os.makedirs(self.yolo_root, exist_ok=True)
+
+        # Only ensure we know the next game number. IMPORTANT: do NOT
+        # overwrite current_game_id/current_index/limit_reached_notified here,
+        # because bootstrap may be called during runtime when toggling the
+        # setting; clearing current_game_id would lose the active session and
+        # cause resumed saving to create a new unrelated session.
+        if not getattr(self, 'next_game_number', None):
+            self.next_game_number = self._find_next_game_number()
+
+        # Set enabled flag but don't start/stop game sessions here. The
+        # lifecycle of a game session is controlled by Tracker (on_game_started)
+        # or explicitly via set_enabled when toggling mid-game.
+        self.enabled = bool(debug_enabled)
 
     @staticmethod
     def bootstrap_static(base_dir: str, debug_enabled: bool) -> None:
@@ -69,7 +85,27 @@ class ImageSaver:
             base_dir: 项目根目录。
             debug_enabled: 是否启用游戏图片保存。
         """
-        pass
+        try:
+            saver = ImageSaver(base_dir)
+            saver.bootstrap(debug_enabled)
+        except Exception:
+            # 静态初始化不应抛出异常
+            return
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Enable or disable image saving at runtime.
+
+        - When enabling: if there's no active game session, create one so that
+          subsequent frames will be saved into the current game directory.
+        - When disabling: keep the current session info so re-enabling will
+          continue the same session instead of creating a new one.
+        """
+        self.enabled = bool(enabled)
+        if self.enabled and self.current_game_id is None:
+            try:
+                self.start_new_game()
+            except Exception:
+                pass
 
     def start_new_game(self) -> str | None:
         """为新局创建目录并执行局数保留策略。
@@ -100,6 +136,9 @@ class ImageSaver:
         Returns:
             bool: 保存成功返回 True；当前无活跃局或已达帧上限返回 False。
         """
+        # Only save when saving is enabled and a game session exists
+        if not getattr(self, 'enabled', False):
+            return False
         if self.current_game_id is None:
             return False
         if self.current_index >= self.max_images_per_game:

@@ -95,6 +95,11 @@ class GameController:
         
         # 创建调试图片保存器（由 GameController 统一管理）
         self.debug_manager: ImageSaver = ImageSaver(settings.BASE_DIR)
+        # 根据当前运行时设置初始化保存器（允许热切换）
+        try:
+            self.debug_manager.bootstrap(settings.SAVE_DEBUG_IMAGES)
+        except Exception:
+            pass
         
         self.yolo_inferencer: YoloInferencer = YoloInferencer(self.debug_manager)
         self.layout_analyzer: LayoutAnalyzer = LayoutAnalyzer(self.layout_config)
@@ -196,6 +201,15 @@ class GameController:
             self.yolo_inferencer.yolo_conf = settings.YOLO_CONFIDENCE_THRESHOLD
         if "YOLO_IOU_THRESHOLD" in updates:
             self.yolo_inferencer.yolo_iou = settings.YOLO_IOU_THRESHOLD
+        # SAVE_DEBUG_IMAGES 是运行时可热切换的选项，需要通知 debug_manager
+        if "SAVE_DEBUG_IMAGES" in updates:
+            try:
+                # Do not call bootstrap (it may reset state); instead toggle
+                # the enabled flag so that saving can be resumed into the
+                # existing session if present.
+                self.debug_manager.set_enabled(bool(updates.get("SAVE_DEBUG_IMAGES", False)))
+            except Exception:
+                pass
 
     def touch_time(self) -> None:
         """刷新 no_target_time，防止暂停后立即超时重置。"""
