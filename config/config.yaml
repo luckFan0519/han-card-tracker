@@ -1,13 +1,13 @@
 always_on_top: true
 big_joker_shown: 🃏
 current_layout: JJ斗地主(含控件)
-debug_mode: true
-detect_interval_sec: 0.2
+debug_mode: false
+detect_interval_sec: 0.5
 device_choice: cuda
 frame_length: 3
 little_joker_shown: 🃟
 reset_time: 3.0
-save_debug_images: false
+save_debug_images: true
 show_played_cards: true
 show_timing: true
 window_layouts:
@@ -69,7 +69,7 @@ window_layouts:
     window_title: JJ斗地主
 yolo_confidence_threshold: 0.6
 yolo_iou_threshold: 0.45
-yolo_model_name: yolov11s_imgsz_960
+yolo_model_name: yolov11m_imgsz_960
 yolo_to_card_mapping:
   A: A
   J: J

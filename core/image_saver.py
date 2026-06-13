@@ -1,7 +1,8 @@
-"""调试图片保存模块。
+"""游戏图片保存模块。
 
-提供按局（game）组织的调试图片存储，支持自动清理旧局、帧上限控制。
+提供按局（game）组织的游戏图片存储，支持自动清理旧局、帧上限控制。
 保存内容为"成对帧"：原始截图 + YOLO 标注图。
+只保留最近 3 局游戏图片。
 """
 
 import os
@@ -11,18 +12,18 @@ from PIL import Image
 
 
 class ImageSaver:
-    """管理调试图片的按局存储与自动清理。
+    """管理游戏图片的按局存储与自动清理。
 
     目录结构::
 
-        debug_img/
+        games_images/
         ├── row/game_1/1.png, 2.png, ...
         └── yolo/game_1/1.png, 2.png, ...
 
     Attributes:
-        base_dir: 调试图片根目录（debug_img/）。
-        raw_root: 原始截图根目录（debug_img/row/）。
-        yolo_root: YOLO 标注图根目录（debug_img/yolo/）。
+        base_dir: 游戏图片根目录（games_images/）。
+        raw_root: 原始截图根目录（games_images/row/）。
+        yolo_root: YOLO 标注图根目录（games_images/yolo/）。
         current_game_id: 当前局标识（如 "game_1"），无活跃局时为 None。
         current_index: 当前局已保存帧序号（从 1 开始）。
         limit_reached_notified: 当前局是否已触发帧上限提示。
@@ -32,12 +33,12 @@ class ImageSaver:
     """
 
     def __init__(self, base_dir: str) -> None:
-        """初始化调试图片保存器。
+        """初始化游戏图片保存器。
 
         Args:
-            base_dir: 项目根目录，调试图片将存放在其下的 ``debug_img/`` 子目录。
+            base_dir: 项目根目录，游戏图片将存放在其下的 ``games_images/`` 子目录。
         """
-        self.base_dir: str = os.path.join(base_dir, "debug_img")
+        self.base_dir: str = os.path.join(base_dir, "games_images")
         self.raw_root: str = os.path.join(self.base_dir, "row")
         self.yolo_root: str = os.path.join(self.base_dir, "yolo")
         self.current_game_id: str | None = None
@@ -50,42 +51,25 @@ class ImageSaver:
     def bootstrap(self, debug_enabled: bool) -> None:
         """启动时执行一次性初始化。
 
-        关闭保存图片时清空所有调试图片并重置编号；开启时扫描已有局号以续编。
+        扫描已有局号以续编。
 
         Args:
-            debug_enabled: 是否启用调试图片保存。
+            debug_enabled: 是否启用游戏图片保存。
         """
         self.current_game_id = None
         self.current_index = 0
         self.limit_reached_notified = False
-        if not debug_enabled:
-            self.clear_all()
-            self.next_game_number = 1
-        else:
-            self.next_game_number = self._find_next_game_number()
+        self.next_game_number = self._find_next_game_number()
 
     @staticmethod
     def bootstrap_static(base_dir: str, debug_enabled: bool) -> None:
         """静态方法：在主进程中执行启动初始化（不创建实例）。
 
-        关闭保存图片时清空所有调试图片；开启时无需操作（子进程会自行处理）。
-
         Args:
             base_dir: 项目根目录。
-            debug_enabled: 是否启用调试图片保存。
+            debug_enabled: 是否启用游戏图片保存。
         """
-        if not debug_enabled:
-            # 关闭保存图片时清空历史调试图
-            import shutil
-            import os
-            debug_img_dir = os.path.join(base_dir, "debug_img")
-            if os.path.isdir(debug_img_dir):
-                shutil.rmtree(debug_img_dir, ignore_errors=True)
-
-    def clear_all(self) -> None:
-        """清空整个调试图片目录。"""
-        if os.path.isdir(self.base_dir):
-            shutil.rmtree(self.base_dir, ignore_errors=True)
+        pass
 
     def start_new_game(self) -> str | None:
         """为新局创建目录并执行局数保留策略。

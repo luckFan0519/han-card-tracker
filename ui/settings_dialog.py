@@ -101,6 +101,7 @@ class SettingsDialog(QDialog):
         on_layout_delete_callback=None,
         on_model_change_callback=None,
         on_confidence_change_callback=None,
+        on_game_change_callback=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("设置")
@@ -121,6 +122,7 @@ class SettingsDialog(QDialog):
         self.on_layout_delete_callback = on_layout_delete_callback
         self.on_model_change_callback = on_model_change_callback
         self.on_confidence_change_callback = on_confidence_change_callback
+        self.on_game_change_callback = on_game_change_callback
 
         # 创建标签页控件
         self.tab_widget = QTabWidget(self)
@@ -217,11 +219,11 @@ class SettingsDialog(QDialog):
         game_names = _scan_game_configs()
         self.combo_game = self._add_combo_row(
             basic_layout,
-            "游戏选择(重启生效)：",
+            "游戏选择：",
             "GameCombo",
             game_names,
             self._on_game_changed,
-            tooltip="选择要支持的卡牌游戏类型，切换后需重启程序生效",
+            tooltip="选择要支持的卡牌游戏类型",
         )
 
         self.combo_layout = QComboBox()
@@ -261,7 +263,7 @@ class SettingsDialog(QDialog):
 
         self.combo_device = self._add_combo_row(
             basic_layout,
-            "设备选择(重启生效)：",
+            "设备选择：",
             "DeviceCombo",
             ["CPU", "GPU"],
             self._on_device_changed,
@@ -282,7 +284,7 @@ class SettingsDialog(QDialog):
         )
         self.combo_debug_mode = self._add_combo_row(
             basic_layout,
-            "调试模式(重启生效)：",
+            "调试模式：",
             "DebugModeCombo",
             ["否", "是"],
             self._on_debug_mode_changed,
@@ -299,7 +301,7 @@ class SettingsDialog(QDialog):
         model_dirs = _scan_model_dirs()
         self.combo_model = self._add_combo_row(
             advanced_layout,
-            "YOLO 模型(重启生效)：",
+            "YOLO 模型：",
             "ModelCombo",
             model_dirs,
             self._on_model_changed,
@@ -308,7 +310,7 @@ class SettingsDialog(QDialog):
 
         self.combo_confidence = self._add_combo_row(
             advanced_layout,
-            "置信度阈值(重启生效)：",
+            "置信度阈值：",
             "ConfidenceCombo",
             ["0.3", "0.4", "0.5", "0.6", "0.7", "0.8"],
             self._on_confidence_changed,
@@ -327,7 +329,7 @@ class SettingsDialog(QDialog):
 
         self.combo_reset_time = self._add_combo_row(
             advanced_layout,
-            "重置时间(重启生效)：",
+            "重置时间：",
             "ResetTimeCombo",
             ["1.0秒", "1.5秒", "2.0秒", "2.5秒", "3.0秒", "3.5秒", "4.0秒", "4.5秒", "5.0秒"],
             self._on_reset_time_changed,
@@ -336,7 +338,7 @@ class SettingsDialog(QDialog):
 
         self.combo_frame_length = self._add_combo_row(
             advanced_layout,
-            "帧长度(重启生效)：",
+            "帧长度：",
             "FrameLengthCombo",
             ["1", "2", "3", "4", "5", "6"],
             self._on_frame_length_changed,
@@ -345,11 +347,11 @@ class SettingsDialog(QDialog):
 
         self.combo_save_debug_images = self._add_combo_row(
             advanced_layout,
-            "保存调试图片(重启生效)：",
+            "保存游戏图片：",
             "SaveDebugImagesCombo",
             ["否", "是"],
             self._on_save_debug_images_changed,
-            tooltip="开启后会保存每帧的截图和 YOLO 标注图到 debug_img 目录，用于排查识别问题",
+            tooltip="开启后会保存每帧的截图和 YOLO 标注图到 games_images 目录，用于排查识别问题。只保留最近 3 局游戏图片",
         )
 
         self.combo_show_timing = self._add_combo_row(
@@ -392,11 +394,8 @@ class SettingsDialog(QDialog):
 
     def _on_game_changed(self, index):
         """游戏选择改变事件。"""
-        from config.settings import _scan_game_configs, save_game_choice
-        game_names = _scan_game_configs()
-        if 0 <= index < len(game_names):
-            game_name = game_names[index]
-            save_game_choice(game_name)
+        if self.on_game_change_callback:
+            self.on_game_change_callback(index)
 
     def _on_device_changed(self, index):
         """
@@ -460,7 +459,7 @@ class SettingsDialog(QDialog):
 
     def _on_save_debug_images_changed(self, index):
         """
-        保存调试图片改变事件
+        保存游戏图片改变事件
         """
         if self.on_save_debug_images_change_callback:
             self.on_save_debug_images_change_callback(index)
@@ -621,10 +620,10 @@ class SettingsDialog(QDialog):
 
     def set_current_save_debug_images(self, save_debug_images):
         """
-        设置当前保存调试图片
+        设置当前保存游戏图片
 
         参数:
-            save_debug_images: 是否保存调试图片（True/False）
+            save_debug_images: 是否保存游戏图片（True/False）
         """
         text = "是" if save_debug_images else "否"
         index = self.combo_save_debug_images.findText(text)

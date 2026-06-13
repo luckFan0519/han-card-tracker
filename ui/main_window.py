@@ -261,6 +261,7 @@ class CardUI(QMainWindow):
             on_layout_delete_callback=self.on_layout_delete_clicked,
             on_model_change_callback=self.on_model_changed,
             on_confidence_change_callback=self.on_confidence_changed,
+            on_game_change_callback=self.on_game_changed,
         )
 
         # 设置当前值
@@ -293,7 +294,7 @@ class CardUI(QMainWindow):
         from config.settings import DEBUG_MODE
         dialog.set_current_debug_mode(DEBUG_MODE)
 
-        # 设置当前保存调试图片
+        # 设置当前保存游戏图片
         from config.settings import SAVE_DEBUG_IMAGES
         dialog.set_current_save_debug_images(SAVE_DEBUG_IMAGES)
 
@@ -674,26 +675,23 @@ class CardUI(QMainWindow):
         print(f"布局配置已更新为: {selected_layout}")
 
     def on_device_changed(self, index):
-        """
-        设备选择改变时调用
-        """
-        # 从设置对话框获取当前选择的设备
+        """设备选择改变时调用。"""
         device_map = ["cpu", "cuda"]
         device_choice = device_map[index]
 
         print(f"[UI] 用户选择设备: {device_choice}")
 
-        # 保存设备选择到settings.py文件
+        # 保存设备选择到 config.yaml
         from config.settings import save_device_choice
         save_device_choice(device_choice)
 
-        # 更新内存中的配置
+        # 更新主进程内存配置
         import config.settings as settings
         settings.DEVICE_CHOICE = device_choice
-        print(f"[UI] 内存中DEVICE_CHOICE已更新为: {settings.DEVICE_CHOICE}")
 
-        # 提示用户需要重启程序才能生效
-        print(f"[UI] 设备选择已更新为: {device_choice}，请重启程序以应用更改")
+        # 通知子进程重建 YoloInferencer
+        self.worker.switch_device(device_choice)
+        print(f"[UI] 设备已切换为: {device_choice}")
 
     def on_model_changed(self, index):
         """YOLO 模型选择改变时调用。"""
@@ -706,7 +704,9 @@ class CardUI(QMainWindow):
             return
 
         save_model_choice(model_name)
-        print(f"[UI] 模型选择已更新为: {model_name}，请重启程序以应用更改")
+        # 通知子进程重建 YoloInferencer
+        self.worker.switch_model(model_name)
+        print(f"[UI] 模型已切换为: {model_name}")
 
     def on_confidence_changed(self, index):
         """YOLO 置信度阈值改变时调用。"""
@@ -716,41 +716,35 @@ class CardUI(QMainWindow):
         if 0 <= index < len(CONFIDENCE_VALUES):
             confidence = CONFIDENCE_VALUES[index]
             save_confidence_choice(confidence)
-            print(f"[UI] 置信度阈值已更新为: {confidence}，请重启程序以应用更改")
+            # 同步到子进程
+            self.worker.update_settings({"YOLO_CONFIDENCE_THRESHOLD": confidence})
+            print(f"[UI] 置信度阈值已切换为: {confidence}")
 
     def on_reset_time_changed(self, index):
-        """
-        重置时间改变时调用
-        """
-        # 从设置对话框获取当前选择的重置时间
+        """重置时间改变时调用。"""
         reset_time = RESET_TIME_OPTIONS[index]
 
-        # 保存重置时间到config.yaml文件
         from config.settings import save_reset_time
         save_reset_time(reset_time)
 
-        # 更新内存中的配置
         import config.settings as settings
         settings.RESET_TIME = reset_time
-
-        print(f"[UI] 重置时间已更新为: {reset_time}秒")
+        # 同步到子进程
+        self.worker.update_settings({"RESET_TIME": reset_time})
+        print(f"[UI] 重置时间已切换为: {reset_time}秒")
 
     def on_frame_length_changed(self, index):
-        """
-        帧长度改变时调用
-        """
-        # 从设置对话框获取当前选择的帧长度
+        """帧长度改变时调用。"""
         frame_length = FRAME_LENGTH_OPTIONS[index]
 
-        # 保存帧长度到config.yaml文件
         from config.settings import save_frame_length
         save_frame_length(frame_length)
 
-        # 更新内存中的配置
         import config.settings as settings
         settings.FRAME_LENGTH = frame_length
-
-        print(f"[UI] 帧长度已更新为: {frame_length}")
+        # 同步到子进程
+        self.worker.update_settings({"FRAME_LENGTH": frame_length})
+        print(f"[UI] 帧长度已切换为: {frame_length}")
 
     def on_always_on_top_changed(self, index):
         """
@@ -845,25 +839,20 @@ class CardUI(QMainWindow):
         print(f"[UI] 是否显示玩家所出的牌已更新为: {'是' if show_played_cards else '否'}")
 
     def on_debug_mode_changed(self, index):
-        """
-        调试模式改变时调用
-        """
-        # 从设置对话框获取当前选择的值
+        """调试模式改变时调用。"""
         debug_mode = True if index == 1 else False
 
-        # 保存调试模式到config.yaml文件
         from config.settings import save_debug_mode
         save_debug_mode(debug_mode)
 
-        # 更新内存中的配置
         import config.settings as settings
         settings.DEBUG_MODE = debug_mode
-        print(f"[UI] 调试模式已更新为: {'是' if debug_mode else '否'}")
+        # 同步到子进程
+        self.worker.update_settings({"DEBUG_MODE": debug_mode})
+        print(f"[UI] 调试模式已切换为: {'是' if debug_mode else '否'}")
 
     def on_save_debug_images_changed(self, index):
-        """
-        保存调试图片改变时调用
-        """
+        """保存游戏图片改变时调用。"""
         save_debug_images = True if index == 1 else False
 
         from config.settings import save_debug_images_choice
@@ -871,7 +860,22 @@ class CardUI(QMainWindow):
 
         import config.settings as settings
         settings.SAVE_DEBUG_IMAGES = save_debug_images
-        print(f"[UI] 保存调试图片已更新为: {'是' if save_debug_images else '否'}")
+        # 同步到子进程
+        self.worker.update_settings({"SAVE_DEBUG_IMAGES": save_debug_images})
+        print(f"[UI] 保存游戏图片已切换为: {'是' if save_debug_images else '否'}")
+
+    def on_game_changed(self, index):
+        """游戏选择改变时调用。"""
+        from config.settings import _scan_game_configs
+        game_names = _scan_game_configs()
+        if 0 <= index < len(game_names):
+            game_name = game_names[index]
+        else:
+            return
+
+        # 通知子进程重载游戏配置并重建 Tracker
+        self.worker.switch_game(game_name)
+        print(f"[UI] 游戏已切换为: {game_name}")
 
     def on_show_timing_changed(self, index):
         """

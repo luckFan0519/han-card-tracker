@@ -26,7 +26,10 @@ GameController 运行在推理子进程中，作为后端游戏逻辑的统一�
     - ``"detect"``                → 执行一次识别
     - ``"reset"``                 → 重置记牌器状态
     - ``("switch_layout", name)`` → 切换布局（重建所有组件）
-    - ``("switch_model", name)``  → 切换模型（重建 CardDetector 和 Tracker，重启生效）
+    - ``("switch_model", name)``  → 切换模型（重建 YoloInferencer 和 Tracker）
+    - ``("switch_device", name)`` → 切换设备（重建 YoloInferencer）
+    - ``("switch_game", name)``   → 切换游戏（重载配置 + 重建 Tracker）
+    - ``("update_settings", dict)``→ 同步运行时设置到子进程
     - ``("touch_time",)``         → 刷新 no_target_time
     - ``None``                    → 终止子进程
 
@@ -149,7 +152,7 @@ class GameController:
         self.tracker = create_tracker(self.game_name, layout_name, self.debug_manager)
 
     def switch_model(self, model_name: str) -> None:
-        """切换 YOLO 模型，更新 settings 并重建 CardDetector 和 Tracker。
+        """切换 YOLO 模型，更新 settings 并重建 YoloInferencer 和 Tracker。
 
         Args:
             model_name: 模型子目录名称。
@@ -158,6 +161,41 @@ class GameController:
         settings.YOLO_MODEL_PATH = settings._resolve_model_path(model_name)
         self.yolo_inferencer = YoloInferencer(self.debug_manager)
         self.tracker = create_tracker(self.game_name, self.tracker.layout_name, self.debug_manager)
+
+    def switch_device(self, device_name: str) -> None:
+        """切换推理设备（CPU/GPU），重建 YoloInferencer。
+
+        Args:
+            device_name: 设备名称（``"cpu"`` 或 ``"cuda"``）。
+        """
+        settings.DEVICE_CHOICE = device_name
+        self.yolo_inferencer = YoloInferencer(self.debug_manager)
+
+    def switch_game(self, game_name: str) -> None:
+        """切换游戏，重载游戏配置并重建 Tracker。
+
+        Args:
+            game_name: 游戏名称（如 ``"doudizhu"``）。
+        """
+        settings.save_game_choice(game_name)
+        self.game_name = game_name
+        self.tracker = create_tracker(game_name, self.tracker.layout_name, self.debug_manager)
+
+    def update_settings(self, updates: dict) -> None:
+        """同步运行时设置到子进程的 settings 模块。
+
+        对于置信度/IOU 等需要同步到实例属性的设置，同时更新对应组件。
+
+        Args:
+            updates: 要更新的设置键值对，如 ``{"DEBUG_MODE": True, "RESET_TIME": 3.0}``。
+        """
+        for key, value in updates.items():
+            setattr(settings, key, value)
+        # 置信度/IOU 需要同步到 YoloInferencer 实例属性
+        if "YOLO_CONFIDENCE_THRESHOLD" in updates:
+            self.yolo_inferencer.yolo_conf = settings.YOLO_CONFIDENCE_THRESHOLD
+        if "YOLO_IOU_THRESHOLD" in updates:
+            self.yolo_inferencer.yolo_iou = settings.YOLO_IOU_THRESHOLD
 
     def touch_time(self) -> None:
         """刷新 no_target_time，防止暂停后立即超时重置。"""
@@ -230,6 +268,27 @@ def run_controller_loop(
                 controller.switch_model(model_name)
             except Exception:
                 result_queue.put(("error", f"切换模型失败: {traceback.format_exc()}"))
+
+        elif isinstance(cmd, tuple) and cmd[0] == "switch_device":
+            device_name = cmd[1]
+            try:
+                controller.switch_device(device_name)
+            except Exception:
+                result_queue.put(("error", f"切换设备失败: {traceback.format_exc()}"))
+
+        elif isinstance(cmd, tuple) and cmd[0] == "switch_game":
+            game_name = cmd[1]
+            try:
+                controller.switch_game(game_name)
+            except Exception:
+                result_queue.put(("error", f"切换游戏失败: {traceback.format_exc()}"))
+
+        elif isinstance(cmd, tuple) and cmd[0] == "update_settings":
+            updates = cmd[1]
+            try:
+                controller.update_settings(updates)
+            except Exception:
+                result_queue.put(("error", f"同步设置失败: {traceback.format_exc()}"))
 
         elif isinstance(cmd, tuple) and cmd[0] == "touch_time":
             controller.touch_time()

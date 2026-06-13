@@ -33,7 +33,7 @@
 - UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
 - 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
 - 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`YoloInferencer`、`LayoutAnalyzer`、`Tracker` 和 `ImageSaver` 五个核心组件，编排截图→纯视觉识别→空间划分→业务映射→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
-- 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("switch_model", name)` / `("touch_time",)` / `None`（终止）。
+- 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("switch_model", name)` / `("switch_device", name)` / `("switch_game", name)` / `("update_settings", dict)` / `("touch_time",)` / `None`（终止）。
 - 结果协议：`("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms)` / `("error", str)`。其中 `remain_cards` 是 `dict[str, int]`（每张牌剩余数量），`zone_cards` 是 `dict[str, list[list[str]]]`（各出牌区域的出牌记录，key 为 `played_zones` 的 key）。
 - 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `YoloInferencer.detect(img)` YOLO 纯视觉推理（计时）→ `LayoutAnalyzer.parse_and_sort()` 几何空间划分与二维排序 → `Tracker.translate_boxes_to_cards()` 业务映射（将物理框解析为扑克点数）→ `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
 - 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。区域键名从游戏配置的 `layout_regions` 动态获取，由 `LayoutAnalyzer` 负责执行。
@@ -53,8 +53,8 @@
 - 所有设置写回都走 `config/settings.py` 的 `save_*` 函数，不要在别处直接改 YAML。
 - 写配置使用"临时文件 + `os.replace`"原子替换模式（见 `save_device_choice` 等函数）。
 - 修改布局时同时考虑：`config/config.yaml` 的 `window_layouts` + `current_layout`。
-- 设备切换（CPU/GPU）当前是"保存并提示重启"，不要假设可热切换模型。
-- 游戏切换当前是"保存并提示重启"，通过 `save_game_choice()` 保存到 `config.yaml` 的 `game_name` 字段。
+- 设备切换（CPU/GPU）通过 ``switch_device`` 命令即时生效，子进程重建 YoloInferencer。
+- 游戏切换通过 ``switch_game`` 命令即时生效，子进程重载游戏配置并重建 Tracker。
 - 游戏配置文件位于 `config/games/` 目录，每个游戏一个 YAML 文件，包含：`total_cards`（牌组定义）、`played_zones`（出牌区域）、`layout_regions`（布局区域）。`yolo_to_card_mapping` 统一在 `config.yaml` 中管理，不同游戏共用。
 - `TOTAL_CARDS`、`PLAYED_ZONES`、`LAYOUT_REGIONS` 从游戏配置加载；`YOLO_TO_CARD_MAPPING` 从 `config.yaml` 加载。
 
@@ -79,12 +79,12 @@
 
 ## 7) 调试截图资产约定（新增逻辑）
 - 统一由 `core/image_saver.py` 管理，不要在 `YoloInferencer`/`BaseCardTracker` 外部手写落盘逻辑。
-- 保存内容是"成对帧"：原始截图到 `debug_img/row/`，YOLO 标注图到 `debug_img/yolo/`，同局同帧同名。
+- 保存内容是"成对帧"：原始截图到 `games_images/row/`，YOLO 标注图到 `games_images/yolo/`，同局同帧同名。
 - 每局目录命名固定为 `game_N`（`game_1`, `game_2`, ...），帧命名固定为 `1.png` 递增。
 - 单局最多 `1000` 张；达到上限后该局后续帧不保存，并且仅打印一次提示（避免刷屏）。
 - 全局只保留最近 `3` 局；新局创建后会清理更旧目录。
-- **保存图片与调试模式分开控制**：`SAVE_DEBUG_IMAGES` 控制是否保存调试图片，`DEBUG_MODE` 仅控制终端日志输出。
-- 启动时执行 `bootstrap(SAVE_DEBUG_IMAGES)`：若保存图片关闭则清空 `debug_img/` 并重置编号。
+- **保存图片与调试模式分开控制**：`SAVE_DEBUG_IMAGES` 控制是否保存游戏图片，`DEBUG_MODE` 仅控制终端日志输出。
+- 启动时执行 `bootstrap(SAVE_DEBUG_IMAGES)`：扫描已有局号以续编。
 
 ## 8) 耗时统计约定
 - YOLO 推理耗时：仅包含 `self.model(...)` 调用，不含截图和保存图片时间；在 `YoloInferencer.detect()` 中用 `time.perf_counter()` 计时。

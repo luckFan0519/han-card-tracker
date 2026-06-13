@@ -18,7 +18,10 @@
     - ``"detect"``                → 执行一次识别
     - ``"reset"``                 → 重置记牌器状态
     - ``("switch_layout", name)`` → 切换布局（重建 Tracker）
-    - ``("switch_model", name)``  → 切换模型（重建 Tracker，重启生效）
+    - ``("switch_model", name)``  → 切换模型（重建 YoloInferencer 和 Tracker）
+    - ``("switch_device", name)`` → 切换设备（重建 YoloInferencer）
+    - ``("switch_game", name)``   → 切换游戏（重载配置 + 重建 Tracker）
+    - ``("update_settings", dict)``→ 同步运行时设置到子进程
     - ``("touch_time",)``         → 刷新 no_target_time
     - ``None``                    → 终止子进程
 
@@ -150,6 +153,39 @@ class InferenceWorker(QObject):
         """
         try:
             self._cmd_queue.put(("switch_model", model_name), timeout=0.5)
+        except (OSError, queue.Full):
+            pass
+
+    def switch_device(self, device_name: str) -> None:
+        """请求子进程切换设备。
+
+        Args:
+            device_name: 设备名称（``"cpu"`` 或 ``"cuda"``）。
+        """
+        try:
+            self._cmd_queue.put(("switch_device", device_name), timeout=0.5)
+        except (OSError, queue.Full):
+            pass
+
+    def switch_game(self, game_name: str) -> None:
+        """请求子进程切换游戏。
+
+        Args:
+            game_name: 游戏名称（如 ``"doudizhu"``）。
+        """
+        try:
+            self._cmd_queue.put(("switch_game", game_name), timeout=0.5)
+        except (OSError, queue.Full):
+            pass
+
+    def update_settings(self, updates: dict) -> None:
+        """请求子进程同步运行时设置。
+
+        Args:
+            updates: 要更新的设置键值对。
+        """
+        try:
+            self._cmd_queue.put(("update_settings", updates), timeout=0.5)
         except (OSError, queue.Full):
             pass
 

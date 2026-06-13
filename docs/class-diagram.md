@@ -271,7 +271,6 @@ classDiagram
         -max_games: int
         -max_images_per_game: int
         +bootstrap(debug_enabled)
-        +clear_all()
         +start_new_game() str
         +save_frame(raw_image, yolo_image) bool
         -_trim_old_games()

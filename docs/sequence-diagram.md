@@ -85,7 +85,6 @@ sequenceDiagram
 
     Main->>App: QApplication(sys.argv)
     Main->>DebugMgr: bootstrap_static(BASE_DIR, SAVE_DEBUG_IMAGES)
-    Note over DebugMgr: 关闭保存时清空 debug_img/
     Main->>Styles: load_qss(app, QSS_PATH)
     Main->>UI: CardUI()
 
@@ -170,7 +169,8 @@ sequenceDiagram
     alt 用户切换设备
         SD->>UI: on_device_change_callback(index)
         UI->>Settings: save_device_choice(device)
-        Note over UI: 提示重启生效
+        UI->>Worker: switch_device(device)
+        Note over Worker: 子进程重建 YoloInferencer
     end
 
     SD-->>UI: dialog.exec() 返回
@@ -333,7 +333,7 @@ sequenceDiagram
             Detector->>Detector: t0 = perf_counter()
             Detector->>Detector: model(img, conf, iou, device)
             Detector->>Detector: yolo_ms = (perf_counter - t0) * 1000
-            Note over Detector: SAVE_DEBUG_IMAGES 时保存调试图片
+            Note over Detector: SAVE_DEBUG_IMAGES 时保存游戏图片
             Detector-->>GC: (raw_result, yolo_ms)
         end
 

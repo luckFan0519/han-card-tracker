@@ -292,7 +292,7 @@ FRAME_LENGTH = config.get('frame_length', 3)
 
 DEBUG_MODE = config.get('debug_mode', True)
 
-# 是否保存调试图片（与调试模式分开控制）
+# 是否保存游戏图片（与调试模式分开控制）
 SAVE_DEBUG_IMAGES = config.get('save_debug_images', False)
 
 # 是否在标题栏显示推理耗时和整轮耗时
@@ -332,8 +332,7 @@ def save_device_choice(device_choice):
             yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
         os.replace(tmp_path, CONFIG_PATH)
 
-        print(f"设备选择已保存到文件: {device_choice}")
-        print(f"请重启程序以应用更改")
+        print(f"设备选择已保存: {device_choice}")
     except Exception as e:
         print(f"保存设备选择失败: {e}")
 
@@ -361,8 +360,7 @@ def save_model_choice(model_name: str):
 
         YOLO_MODEL_NAME = model_name
         YOLO_MODEL_PATH = _resolve_model_path(model_name)
-        print(f"模型选择已保存到文件: {model_name}")
-        print(f"请重启程序以应用更改")
+        print(f"模型选择已保存: {model_name}")
     except Exception as e:
         print(f"保存模型选择失败: {e}")
 
@@ -386,7 +384,7 @@ def save_confidence_choice(confidence: float):
         os.replace(tmp_path, CONFIG_PATH)
 
         YOLO_CONFIDENCE_THRESHOLD = confidence
-        print(f"置信度阈值已保存: {confidence}，请重启程序以应用更改")
+        print(f"置信度阈值已保存: {confidence}")
     except Exception as e:
         print(f"保存置信度阈值失败: {e}")
 
@@ -542,8 +540,8 @@ def save_debug_mode(debug_mode):
 
 def save_debug_images_choice(save_debug_images):
     """
-    保存是否保存调试图片到config.yaml文件
-    save_debug_images: 是否保存调试图片（True/False）
+    保存是否保存游戏图片到config.yaml文件
+    save_debug_images: 是否保存游戏图片（True/False）
     """
     global SAVE_DEBUG_IMAGES
     try:
@@ -563,9 +561,9 @@ def save_debug_images_choice(save_debug_images):
         os.replace(tmp_path, CONFIG_PATH)
 
         SAVE_DEBUG_IMAGES = save_debug_images
-        print(f"保存调试图片设置已保存: {save_debug_images}")
+        print(f"保存游戏图片设置已保存: {save_debug_images}")
     except Exception as e:
-        print(f"保存调试图片设置失败: {e}")
+        print(f"保存游戏图片设置失败: {e}")
 
 def save_show_timing_choice(show_timing):
     """
@@ -624,7 +622,7 @@ def save_game_choice(game_name: str):
         YOLO_TO_CARD_MAPPING = GAME_CONFIG.get('yolo_to_card_mapping') or YOLO_TO_CARD_MAPPING
         PLAYED_ZONES = GAME_CONFIG.get('played_zones', PLAYED_ZONES)
         LAYOUT_REGIONS = GAME_CONFIG.get('layout_regions', LAYOUT_REGIONS)
-        print(f"游戏选择已保存: {game_name}，请重启程序以应用更改")
+        print(f"游戏选择已保存: {game_name}")
     except Exception as e:
         print(f"保存游戏选择失败: {e}")
 
