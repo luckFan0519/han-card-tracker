@@ -24,7 +24,7 @@
 
 ## 1) 先看什么（最快进入状态）
 - 入口是 `main.py`：创建 `QApplication`、加载 `ui/ui.qss`、启动 `CardUI`。
-- 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/game_controller.py` -> `core/games/<game>.py` -> `core/base_tracker.py` -> `core/card_detector.py` -> `core/screen_capture.py`。
+- 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/game_controller.py` -> `core/games/<game>.py` -> `core/base_tracker.py` -> `core/yolo_inferencer.py` -> `core/screen_capture.py`。
 - 配置集中在 `config/settings.py`（运行时常量 + 保存函数）与 `config/config.yaml`（可编辑参数）。
 - 游戏配置在 `config/games/` 目录下，每个游戏一个 YAML 文件（如 `doudizhu.yaml`）。
 - AI 开发规范详见 `AI开发标准/` 目录（代码注释规范 + 类型注解规范），已在第 0 节概述。
@@ -32,12 +32,12 @@
 ## 2) 架构与数据流（改逻辑前必须理解）
 - UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
 - 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
-- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`CardDetector` 和 `Tracker` 三个核心组件，编排截图→识别→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
+- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`CardDetector`、`LayoutAnalyzer` 和 `Tracker` 四个核心组件，编排截图→纯视觉识别→空间划分→业务映射→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
 - 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("switch_model", name)` / `("touch_time",)` / `None`（终止）。
 - 结果协议：`("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms)` / `("error", str)`。其中 `remain_cards` 是 `dict[str, int]`（每张牌剩余数量），`zone_cards` 是 `dict[str, list[list[str]]]`（各出牌区域的出牌记录，key 为 `played_zones` 的 key）。
-- 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `CardDetector.detect(img)` YOLO 推理（计时）→ 保存调试图片（不计入推理耗时）→ 按 layout 分区 → YOLO 类名映射为牌点 → `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
-- 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。区域键名从游戏配置的 `layout_regions` 动态获取。
-- 排序不是置信度顺序：`sort_cards_by_topright_rowwise()` 先按行再按列，避免出牌串顺序错乱。
+- 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `CardDetector.detect(img)` YOLO 纯视觉推理（计时）→ `LayoutAnalyzer.parse_and_sort()` 几何空间划分与二维排序 → `Tracker.translate_boxes_to_cards()` 业务映射（将物理框解析为扑克点数）→ `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
+- 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。区域键名从游戏配置的 `layout_regions` 动态获取，由 `LayoutAnalyzer` 负责执行。
+- 排序不是置信度顺序：`LayoutAnalyzer` 先按行再按列，避免出牌串顺序错乱。
 - 多游戏支持：`BaseCardTracker`（`core/base_tracker.py`）为抽象基类，子类在 `core/games/` 目录下（如 `DoudizhuTracker`）。新增游戏只需：① 在 `config/games/` 添加 YAML 配置 ② 在 `core/games/` 添加 Tracker 子类 ③ 在 `TRACKER_REGISTRY` 注册。
 
 ## 3) 状态机约定（核心业务规则）
@@ -78,7 +78,7 @@
 - 运行主程序：`python main.py`。
 
 ## 7) 调试截图资产约定（新增逻辑）
-- 统一由 `core/debug_image_manager.py` 管理，不要在 `CardDetector`/`BaseCardTracker` 外部手写落盘逻辑。
+- 统一由 `core/debug_image_manager.py` 管理，不要在 `YoloInferencer`/`BaseCardTracker` 外部手写落盘逻辑。
 - 保存内容是"成对帧"：原始截图到 `debug_img/row/`，YOLO 标注图到 `debug_img/yolo/`，同局同帧同名。
 - 每局目录命名固定为 `game_N`（`game_1`, `game_2`, ...），帧命名固定为 `1.png` 递增。
 - 单局最多 `1000` 张；达到上限后该局后续帧不保存，并且仅打印一次提示（避免刷屏）。
@@ -87,7 +87,7 @@
 - 启动时执行 `bootstrap(SAVE_DEBUG_IMAGES)`：若保存图片关闭则清空 `debug_img/` 并重置编号。
 
 ## 8) 耗时统计约定
-- YOLO 推理耗时：仅包含 `self.model(...)` 调用，不含截图和保存图片时间；在 `CardDetector.__perform_yolo_recognition()` 中用 `time.perf_counter()` 计时。
+- YOLO 推理耗时：仅包含 `self.model(...)` 调用，不含截图和保存图片时间；在 `YoloInferencer.detect()` 中用 `time.perf_counter()` 计时。
 - 整轮耗时：从 `request_one_update()` 发出检测请求到 `on_result_ready()` 收到结果，包含截图+推理+队列通信+轮询延迟。
 - 标题栏显示格式：`Han记牌器 · 推理 XXms · 整轮 XXms`，由 `SHOW_TIMING` 配置项控制是否显示。
 

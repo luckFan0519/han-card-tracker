@@ -1,56 +1,38 @@
-# 窗口置顶显示
 always_on_top: true
-# 大王出牌记录显示符号
 big_joker_shown: 🃏
-# 当前使用的布局名称（对应 window_layouts 中的键名）
 current_layout: JJ斗地主(含控件)
-# 调试模式：开启后终端输出详细日志
-debug_mode: false
-# 检测间隔（秒）
+debug_mode: true
 detect_interval_sec: 0.2
-# 推理设备：cpu 或 cuda
 device_choice: cuda
-# 连续帧确认长度：连续 N 帧结果一致才认为稳定
 frame_length: 3
-# 小王出牌记录显示符号
 little_joker_shown: 🃟
-# 超时重置时间（秒）：超过此时间未检测到有效目标则重置状态机
 reset_time: 3.0
-# 是否保存调试截图到 debug_img/ 目录
 save_debug_images: false
-# 是否显示各出牌区域的出牌记录
 show_played_cards: true
-# 是否在标题栏显示推理耗时和整轮耗时
 show_timing: true
-# 窗口布局配置：每个布局包含窗口标题和五个检测区域的归一化坐标（x1, y1, x2, y2）
 window_layouts:
   JJ斗地主(全屏):
     layout:
-      # 地主底牌区域
       landlord_cards:
       - 0.37
       - 0
       - 0.55
       - 0.08
-      # 上家出牌区域
       opponent_left:
       - 0.2
       - 0.25
       - 0.47
       - 0.45
-      # 下家出牌区域
       opponent_right:
       - 0.48
       - 0.25
       - 0.85
       - 0.45
-      # 玩家手牌区域
       player_hand:
       - 0.04
       - 0.7
       - 0.96
       - 0.85
-      # 本家出牌区域
       player_played:
       - 0.04
       - 0.46
@@ -85,13 +67,9 @@ window_layouts:
       - 0.96
       - 0.6
     window_title: JJ斗地主
-# YOLO 置信度阈值：低于此值的检测结果被过滤
 yolo_confidence_threshold: 0.6
-# YOLO NMS IoU 阈值：重叠度高于此值的检测框会被合并
 yolo_iou_threshold: 0.45
-# YOLO 模型名称，对应 yolo/weights/ 下的子目录名（如 yolo/weights/yolov11s_imgsz_960/best.pt）
 yolo_model_name: yolov11s_imgsz_960
-# YOLO 类名到牌点的映射：左边是 YOLO 检测出的类名，右边是程序内部使用的牌点标识
 yolo_to_card_mapping:
   A: A
   J: J

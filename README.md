@@ -176,7 +176,7 @@ ddz_cards_tracker_8/
 │   └── config.yaml             # YAML配置文件
 ├── core/
 │   ├── card_tracker.py         # 记牌逻辑（状态机）
-│   ├── card_detector.py        # YOLO检测器
+│   ├── yolo_inferencer.py     # YOLO 推理器（纯视觉推理）
 │   ├── inference_process.py    # 多进程推理（子进程运行YOLO，避免UI卡顿）
 │   ├── debug_image_manager.py  # 调试截图管理（按局保存/清理）
 │   └── screen_capture.py       # 窗口截图

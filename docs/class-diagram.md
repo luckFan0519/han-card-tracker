@@ -183,7 +183,8 @@ classDiagram
     class GameController {
         -game_name: str
         -screen_capture: ScreenCapture
-        -card_detector: CardDetector
+        -yolo_inferencer: YoloInferencer
+        -layout_analyzer: LayoutAnalyzer
         -tracker: BaseCardTracker
         +detect() tuple
         +reset()
@@ -239,23 +240,23 @@ classDiagram
         +create_tracker(game_name, layout_name) BaseCardTracker
     }
 
-    class CardDetector {
+    class YoloInferencer {
         -yolo_iou: float
         -yolo_conf: float
         -weight_path: str
-        -layout_name: str
-        -layout_config: dict
         -model: YOLO
         -device: str
         -debug_manager: DebugImageManager
-        +detect(img) tuple[dict, float]
-        +parse_result(r) dict
-        +sort_cards_by_topright_rowwise(dets, max_rows) list
+        +detect(img) tuple[object, float]
         -__load_model() tuple
         -__load_tensorrt(engine_path) YOLO
         -__load_onnx(onnx_path) YOLO
-        -__perform_yolo_recognition(img) tuple
-        -__trans_yolo_to_card(r) list
+    }
+
+    class LayoutAnalyzer {
+        -layout_config: dict
+        +parse_and_sort(raw_result, img_size) dict
+        +sort_cards_by_topright_rowwise(dets, max_rows) list
     }
 
     class ScreenCapture {
@@ -398,7 +399,9 @@ classDiagram
     InferenceWorker ..> run_controller_loop : 创建子进程
     run_controller_loop ..> GameController : 创建实例
     GameController *-- ScreenCapture : 组合（创建并持有）
-    GameController *-- CardDetector : 组合（创建并持有）
+    GameController *-- YoloInferencer : 组合（创建并持有）
+    GameController *-- LayoutAnalyzer : 组合（创建并持有）
+    GameController *-- YoloInferencer : 组合（创建并持有）
     GameController *-- BaseCardTracker : 组合（创建并持有）
     GameController ..> create_tracker : 调用工厂函数
     create_tracker ..> DoudizhuTracker : 创建实例
@@ -407,6 +410,6 @@ classDiagram
     BaseCardTracker o-- DebugImageManager : 聚合（单例）
     BaseCardTracker ..> settings : 依赖（状态常量/配置）
 
-    CardDetector o-- DebugImageManager : 聚合（单例）
-    CardDetector ..> settings : 依赖（模型路径/布局/映射）
+    YoloInferencer o-- DebugImageManager : 聚合（单例）
+    YoloInferencer ..> settings : 依赖（模型路径/布局/映射）
 ```

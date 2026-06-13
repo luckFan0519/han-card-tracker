@@ -15,7 +15,8 @@ sequenceDiagram
     participant SubProc as GameController (子进程)
     participant Controller as GameController
     participant Tracker as BaseCardTracker
-    participant Detector as CardDetector
+    participant Detector as YoloInferencer
+    participant Analyzer as LayoutAnalyzer
     participant Capture as ScreenCapture
     participant YOLO as YOLO Model
     participant ResultQ as result_queue
@@ -34,11 +35,12 @@ sequenceDiagram
     Detector->>YOLO: model(img, conf, iou, device)
     Note over Detector: time.perf_counter() 计时
     YOLO-->>Detector: results
-    Detector->>Detector: parse_result(results[0])
-    Note over Detector: 按布局分区 + sort_cards_by_topright_rowwise
-    Detector->>Detector: __trans_yolo_to_card()
-    Detector-->>Controller: (frame_data: dict[str, list[str]], yolo_ms)
+    Detector-->>Controller: (raw_result, yolo_ms)
 
+    Controller->>Analyzer: parse_and_sort(raw_result, img.size)
+    Analyzer-->>Controller: region_boxes
+
+    Controller->>Tracker: translate_boxes_to_cards(region_boxes)
     Controller->>Tracker: get_cards_number(frame_data, yolo_ms)
     Tracker->>Tracker: run_game(frame_data, yolo_ms)
     Tracker->>Tracker: _presses_one_frame(frame_data, yolo_ms)
@@ -77,7 +79,7 @@ sequenceDiagram
     participant SubProc as GameController (子进程)
     participant Controller as GameController
     participant Tracker as BaseCardTracker
-    participant Detector as CardDetector
+    participant Detector as YoloInferencer
 
     Main->>App: QApplication(sys.argv)
     Main->>DebugMgr: bootstrap(SAVE_DEBUG_IMAGES)
@@ -92,8 +94,11 @@ sequenceDiagram
 
     Worker->>SubProc: mp.Process(target=run_controller_loop)
     SubProc->>Controller: GameController(game_name, layout_name)
-    Controller->>Detector: CardDetector(layout_name)
+    Controller->>Detector: YoloInferencer()
     Detector->>Detector: __load_model()
+    Detector-->>Controller: 就绪
+    Controller->>Analyzer: LayoutAnalyzer(layout_config)
+    Analyzer-->>Controller: 就绪
     Note over Detector: GPU: TensorRT > PyTorch CUDA<br/>CPU: ONNX > PyTorch CPU
     Detector-->>Controller: 就绪
     Controller->>Capture: ScreenCapture(window_title)

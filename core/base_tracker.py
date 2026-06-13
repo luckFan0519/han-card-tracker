@@ -72,6 +72,22 @@ class BaseCardTracker(ABC):
             z["key"]: False for z in settings.PLAYED_ZONES
         }
 
+    def translate_boxes_to_cards(self, region_boxes: dict[str, list[dict]]) -> dict[str, list[str]]:
+        """将物理坐标框里的 YOLO 标签转换为游戏业务里的牌点名称。
+
+        Args:
+            region_boxes: 经过空间排序和分区后的对象字典，key 为区域名。
+
+        Returns:
+            dict[str, list[str]]: 转换后的各个区域扑克点数列表。
+        """
+        frame_data: dict[str, list[str]] = {}
+        for region_key, dets in region_boxes.items():
+            frame_data[region_key] = [
+                settings.YOLO_TO_CARD_MAPPING[d["name"]] for d in dets
+            ]
+        return frame_data
+
     def reset(self) -> None:
         """重置记牌器到初始状态，清空所有帧缓存和出牌记录。"""
         self.state = WAIT_BEGIN

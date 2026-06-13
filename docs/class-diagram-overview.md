@@ -24,7 +24,8 @@ classDiagram
     class BaseCardTracker
     class DoudizhuTracker
     class create_tracker
-    class CardDetector
+    class YoloInferencer
+    class LayoutAnalyzer
     class ScreenCapture
     class DebugImageManager
 
@@ -54,7 +55,8 @@ classDiagram
     SettingsDialog *-- LayoutComboView
     SettingsDialog *-- LayoutItemDelegate
     GameController *-- ScreenCapture
-    GameController *-- CardDetector
+    GameController *-- YoloInferencer
+    GameController *-- LayoutAnalyzer
     GameController *-- BaseCardTracker
 
     %% ========== 聚合（按需创建/共享单例） ==========
@@ -62,7 +64,7 @@ classDiagram
     SettingsDialog o-- LayoutEditorDialog
     LayoutEditorDialog o-- PreviewDialog
     BaseCardTracker o-- DebugImageManager
-    CardDetector o-- DebugImageManager
+    YoloInferencer o-- DebugImageManager
 
     %% ========== 继承 ==========
     DoudizhuTracker --|> BaseCardTracker
@@ -79,7 +81,7 @@ classDiagram
     GameController ..> create_tracker
     create_tracker ..> DoudizhuTracker
     BaseCardTracker ..> settings
-    CardDetector ..> settings
+    YoloInferencer ..> settings
 ```
 
 ## 关系图例
@@ -95,9 +97,7 @@ classDiagram
 
 ```
 CardUI → InferenceWorker → run_controller_loop(子进程) → GameController ─┬─ ScreenCapture (截图)
-                                                                          ├─ CardDetector (YOLO识别)
-                                                                          └─ Tracker (状态机)
-                                                                              ↓
-                                                                         DoudizhuTracker
-                                                                         YOLO Model
+                                                                          ├─ YoloInferencer (YOLO 纯视觉推理)
+                                                                          ├─ LayoutAnalyzer (几何分区与排序)
+                                                                          └─ Tracker (状态机 / 业务映射)
 ```

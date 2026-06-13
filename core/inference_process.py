@@ -10,7 +10,7 @@
     ┌────────────────┐                      ┌──────────────────────┐
     │ InferenceWorker │  ──cmd_queue──►     │  GameController      │
     │  (QObject)      │                      │   ├─ ScreenCapture   │
-    │  poll_timer     │  ◄─result_queue──   │   ├─ CardDetector    │
+    │  poll_timer     │  ◄─result_queue──   │   ├─ YoloInferencer    │
     └────────────────┘                      │   └─ Tracker 子类    │
                                             └──────────────────────┘
 
