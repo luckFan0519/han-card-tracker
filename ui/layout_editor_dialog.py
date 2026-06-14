@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from utils.layout_editor.coord import REGION_KEYS, denormalize_rect, normalize_layout, normalize_rect, sanitize_pixel_rect
+from utils.layout_editor.coord import get_region_keys, get_region_name_cn, denormalize_rect, normalize_layout, normalize_rect, sanitize_pixel_rect
 from utils.layout_editor.service import (
     capture_window_by_title,
     get_layout_config,
@@ -29,23 +29,17 @@ from utils.layout_editor.service import (
 )
 from utils.layout_editor.validator import build_preview_image, validate_normalized_layout
 
-REGION_NAME_CN = {
-    "player_hand": "玩家手牌",
-    "player_played": "本家出牌",
-    "opponent_left": "上家出牌",
-    "opponent_right": "下家出牌",
-    "landlord_cards": "地主底牌",
-}
-
 
 class RectCanvas(QLabel):
     rect_changed = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, region_names: Dict[str, str] | None = None):
         super().__init__(parent)
         self._base_pixmap: Optional[QPixmap] = None
         self._display_scale = 1.0
-        self._active_key = REGION_KEYS[0]
+        self._region_names: Dict[str, str] = region_names or {}
+        _region_keys = get_region_keys()
+        self._active_key = _region_keys[0] if _region_keys else "player_hand"
         self._rects: Dict[str, Tuple[int, int, int, int]] = {}
         self._drawing = False
         self._start = QPoint()
@@ -171,7 +165,7 @@ class RectCanvas(QLabel):
             sx2 = int(round(x2 * scale_x))
             sy2 = int(round(y2 * scale_y))
             painter.drawRect(sx1, sy1, max(1, sx2 - sx1), max(1, sy2 - sy1))
-            painter.drawText(sx1 + 3, max(12, sy1 - 3), REGION_NAME_CN.get(key, key))
+            painter.drawText(sx1 + 3, max(12, sy1 - 3), self._region_names.get(key, key))
 
         if self._drawing:
             pen = QPen(Qt.red)
@@ -273,6 +267,10 @@ class LayoutEditorDialog(QDialog):
         self._on_restore_topmost = on_restore_topmost
         self._stay_on_top = stay_on_top
 
+        # 从当前游戏配置动态获取区域信息
+        self._region_keys = get_region_keys()
+        self._region_name_cn = get_region_name_cn()
+
         root = QVBoxLayout(self)
 
         top = QGridLayout()
@@ -293,7 +291,7 @@ class LayoutEditorDialog(QDialog):
         content = QHBoxLayout()
         root.addLayout(content, 1)
 
-        self.canvas = RectCanvas()
+        self.canvas = RectCanvas(region_names=self._region_name_cn)
         self.canvas_scroll = QScrollArea()
         self.canvas_scroll.setWidgetResizable(False)
         self.canvas_scroll.setAlignment(Qt.AlignCenter)
@@ -308,8 +306,8 @@ class LayoutEditorDialog(QDialog):
         group_layout = QVBoxLayout(group)
 
         self.combo_region = QComboBox()
-        for key in REGION_KEYS:
-            self.combo_region.addItem(f"{REGION_NAME_CN[key]} ({key})", key)
+        for key in self._region_keys:
+            self.combo_region.addItem(f"{self._region_name_cn[key]} ({key})", key)
         group_layout.addWidget(self.combo_region)
 
         self.lbl_pixel = QLabel("像素: -")
@@ -544,7 +542,7 @@ class LayoutEditorDialog(QDialog):
         self._adjust_dialog_size_for_image()
         QTimer.singleShot(0, self._fit_canvas_to_viewport)
 
-        # 如果布局名称已经存在，截图后自动加载该布局矩形，便于微调
+        # 如果布局名称已经存在，截图后自动加载该布局矩形，便于微调（仅加载当前游戏区域键名匹配的部分）
         layout_name = self.edit_layout_name.text().strip()
         cfg = get_layout_config(layout_name)
         if cfg:
@@ -552,7 +550,7 @@ class LayoutEditorDialog(QDialog):
             if cfg_window_title == window_title and isinstance(cfg_layout, dict):
                 w, h = self.canvas.image_size
                 rects = {}
-                for key in REGION_KEYS:
+                for key in self._region_keys:
                     if key in cfg_layout:
                         rects[key] = denormalize_rect(cfg_layout[key], w, h)
                 self.canvas.set_rects(rects)
@@ -600,12 +598,12 @@ class LayoutEditorDialog(QDialog):
             return None, "请先截图"
 
         rects = self.canvas.get_rects()
-        missing = [REGION_NAME_CN[k] for k in REGION_KEYS if k not in rects]
+        missing = [self._region_name_cn.get(k, k) for k in self._region_keys if k not in rects]
         if missing:
             return None, "缺少区域: " + "、".join(missing)
 
         w, h = self.canvas.image_size
-        normalized = normalize_layout(rects, w, h)
+        normalized = normalize_layout(rects, w, h, region_keys=self._region_keys)
         ok, msg = validate_normalized_layout(normalized)
         if not ok:
             return None, msg

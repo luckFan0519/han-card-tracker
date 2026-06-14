@@ -656,11 +656,13 @@ def save_window_layout(layout_name, window_title, layout_dict, set_current=True)
     """
     保存/更新单个窗口布局到 config.yaml。
 
-    参数:
-    - layout_name: 布局名称
-    - window_title: 目标窗口标题
-    - layout_dict: 五个区域的归一化坐标字典
-    - set_current: 保存后是否切换为当前布局
+    动态构建 layout：支持不同游戏的不同区域键名。
+
+    Args:
+        layout_name: 布局名称。
+        window_title: 目标窗口标题。
+        layout_dict: 各区域的归一化坐标字典（key 来自当前游戏的 LAYOUT_REGIONS）。
+        set_current: 保存后是否切换为当前布局。
     """
     global WINDOW_LAYOUTS, CURRENT_LAYOUT
     try:
@@ -677,15 +679,15 @@ def save_window_layout(layout_name, window_title, layout_dict, set_current=True)
         if not isinstance(window_layouts, dict):
             window_layouts = {}
 
+        # 动态构建 layout：支持不同游戏的不同区域键名
+        layout_data = {
+            key: [float(x) for x in layout_dict[key]]
+            for key in layout_dict
+        }
+
         window_layouts[layout_name] = {
             'window_title': str(window_title),
-            'layout': {
-                'player_hand': [float(x) for x in layout_dict['player_hand']],
-                'player_played': [float(x) for x in layout_dict['player_played']],
-                'opponent_left': [float(x) for x in layout_dict['opponent_left']],
-                'opponent_right': [float(x) for x in layout_dict['opponent_right']],
-                'landlord_cards': [float(x) for x in layout_dict['landlord_cards']],
-            }
+            'layout': layout_data,
         }
 
         cfg['window_layouts'] = window_layouts

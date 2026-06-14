@@ -1,0 +1,60 @@
+# 够级_六副牌 游戏配置
+game_name: "够级_六副牌"
+
+# 牌组定义：每种牌的初始数量（6副扑克牌，共324张）
+# 每种数字牌 24张（6副×4花色），大小王各6张
+total_cards:
+  '3': 6
+  '4': 24
+  '5': 24
+  '6': 24
+  '7': 24
+  '8': 24
+  '9': 24
+  '10': 24
+  'J': 24
+  'Q': 24
+  'K': 24
+  'A': 24
+  '2': 24
+  '小': 6
+  '大': 6
+
+# 出牌区域定义：key 为内部标识，label 为 UI 显示，region 对应 layout 中的区域键名
+# 够级6人游戏：本家 + 对门 + 左方两人 + 右方两人
+played_zones:
+  - key: "self"
+    label: "本家"
+    region: "played_self"
+  - key: "facing"
+    label: "对门"
+    region: "played_facing"
+  - key: "left_1"
+    label: "左上"
+    region: "played_left_1"
+  - key: "left_2"
+    label: "左下"
+    region: "played_left_2"
+  - key: "right_1"
+    label: "右上"
+    region: "played_right_1"
+  - key: "right_2"
+    label: "右下"
+    region: "played_right_2"
+
+# 布局区域定义：key 为 layout 配置中的键名，label 为可视化编辑时的显示名
+layout_regions:
+  - key: "player_hand"
+    label: "玩家手牌"
+  - key: "played_self"
+    label: "本家出牌"
+  - key: "played_facing"
+    label: "对门出牌"
+  - key: "played_left_1"
+    label: "左上出牌"
+  - key: "played_left_2"
+    label: "左下出牌"
+  - key: "played_right_1"
+    label: "右上出牌"
+  - key: "played_right_2"
+    label: "右下出牌"

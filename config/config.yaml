@@ -1,10 +1,11 @@
 always_on_top: true
 big_joker_shown: 🃏
 current_layout: JJ斗地主(含控件)
-debug_mode: false
-detect_interval_sec: 0.2
+debug_mode: true
+detect_interval_sec: 0.5
 device_choice: cuda
 frame_length: 3
+game_name: doudizhu
 little_joker_shown: 🃟
 reset_time: 3.0
 save_debug_images: false
@@ -67,6 +68,44 @@ window_layouts:
       - 0.96
       - 0.6
     window_title: JJ斗地主
+  够级:
+    layout:
+      played_facing:
+      - 0.4219242902208202
+      - 0.14249037227214378
+      - 0.5764984227129337
+      - 0.24261874197689345
+      played_left_1:
+      - 0.0749211356466877
+      - 0.1951219512195122
+      - 0.27129337539432175
+      - 0.3247753530166881
+      played_left_2:
+      - 0.07807570977917981
+      - 0.3992297817715019
+      - 0.3351735015772871
+      - 0.5494223363286265
+      played_right_1:
+      - 0.7003154574132492
+      - 0.18356867779204109
+      - 0.8832807570977917
+      - 0.3080872913992298
+      played_right_2:
+      - 0.6600946372239748
+      - 0.386392811296534
+      - 0.8690851735015773
+      - 0.472400513478819
+      played_self:
+      - 0.3556782334384858
+      - 0.4159178433889602
+      - 0.5938485804416404
+      - 0.5507060333761232
+      player_hand:
+      - 0.007097791798107256
+      - 0.5776636713735558
+      - 0.9242902208201893
+      - 0.7715019255455713
+    window_title: 微乐够级
 yolo_confidence_threshold: 0.6
 yolo_iou_threshold: 0.45
 yolo_model_name: yolov11s_imgsz_960

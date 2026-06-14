@@ -502,13 +502,13 @@ class CardUI(QMainWindow):
 
     def _reset_ui_to_total(self):
         """
-        把 UI 的显示重置为 TOTAL_CARDS：
+        把 UI 的显示重置为当前游戏的 TOTAL_CARDS：
         - 数量恢复成总数
         - depleted 属性恢复 False
         - 强制刷新 QSS
         """
         for card in self.card_order:
-            v = TOTAL_CARDS.get(card, 0)
+            v = settings.TOTAL_CARDS.get(card, 0)
             self.count_labels[card].setText(str(v))
 
             self.name_labels[card].setProperty("depleted", False)
@@ -864,14 +864,98 @@ class CardUI(QMainWindow):
         self.worker.update_settings({"SAVE_DEBUG_IMAGES": save_debug_images})
         print(f"[UI] 保存游戏图片已切换为: {'是' if save_debug_images else '否'}")
 
+    def _rebuild_for_new_game(self):
+        """切换游戏后重建 UI（牌面网格 + 出牌标签）。
+
+        不同游戏的牌面数量和出牌区域不同，切换时需要：
+        1. 更新 card_order 和牌面网格
+        2. 重建出牌标签（PLAYED_ZONES 不同）
+        3. 重置缓存和 UI 显示
+        """
+        # 1. 更新牌面顺序
+        self.card_order = list(settings.TOTAL_CARDS.keys())
+        self.card_order.reverse()
+
+        # 2. 清除并重建牌面网格
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self.name_labels.clear()
+        self.count_labels.clear()
+        for col, card in enumerate(self.card_order):
+            v = settings.TOTAL_CARDS.get(card, 0)
+            name = QLabel(str(card))
+            name.setAlignment(Qt.AlignCenter)
+            name.setObjectName("CardNameLabel")
+            name.setProperty("depleted", False)
+            self.grid.addWidget(name, 0, col)
+            self.name_labels[card] = name
+
+            cnt = QLabel(str(v))
+            cnt.setAlignment(Qt.AlignCenter)
+            cnt.setObjectName("CardCountLabel")
+            cnt.setProperty("depleted", False)
+            cnt.setProperty("count", str(v))
+            self.grid.addWidget(cnt, 1, col)
+            self.count_labels[card] = cnt
+
+        # 3. 清除旧的出牌标签
+        for key, lbl in self.played_cards_labels.items():
+            try:
+                self.second_row_layout.removeWidget(lbl)
+            except Exception:
+                pass
+            lbl.deleteLater()
+        self.played_cards_labels.clear()
+
+        # 4. 创建新的出牌标签
+        self.played_cards = {z["key"]: "" for z in settings.PLAYED_ZONES}
+        for zone in settings.PLAYED_ZONES:
+            key = zone["key"]
+            label = zone["label"]
+            lbl = QLabel("")
+            lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            lbl.setObjectName("InfoLabel")
+            self.played_cards_labels[key] = lbl
+
+        # 5. 更新可见性
+        self._update_played_cards_visibility()
+
+        # 6. 重置缓存
+        self._last_count_values.clear()
+        self._last_depleted_values.clear()
+        self._last_played_signature = None
+
+        # 7. 重置 UI 显示
+        self._reset_ui_to_total()
+
+        # 8. 强制调整窗口大小
+        self.setMinimumWidth(550)
+        self.setMinimumHeight(100)
+        new_w = max(self.central_widget.sizeHint().width(), 550)
+        new_h = max(self.central_widget.sizeHint().height(), 100)
+        self.resize(new_w, new_h)
+
     def on_game_changed(self, index):
-        """游戏选择改变时调用。"""
+        """游戏选择改变时调用。重建 UI 并通知子进程。"""
         from config.settings import _scan_game_configs
         game_names = _scan_game_configs()
         if 0 <= index < len(game_names):
             game_name = game_names[index]
         else:
             return
+
+        # 更新主进程的游戏配置（同时写入 config.yaml）
+        settings.save_game_choice(game_name)
+
+        # 重建 UI（牌面网格 + 出牌标签）
+        self._rebuild_for_new_game()
+
+        # 重置记牌器状态
+        self._reset_ui_to_total()
+        self._touch_no_target_time()
 
         # 通知子进程重载游戏配置并重建 Tracker
         self.worker.switch_game(game_name)

@@ -26,7 +26,7 @@
 - 入口是 `main.py`：创建 `QApplication`、加载 `ui/ui.qss`、启动 `CardUI`。
 - 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/game_controller.py` -> `core/games/<game>.py` -> `core/base_tracker.py` -> `core/yolo_inferencer.py` -> `core/screen_capture.py`。
 - 配置集中在 `config/settings.py`（运行时常量 + 保存函数）与 `config/config.yaml`（可编辑参数）。
-- 游戏配置在 `config/games/` 目录下，每个游戏一个 YAML 文件（如 `doudizhu.yaml`）。
+- 游戏配置在 `config/games/` 目录下，每个游戏一个 YAML 文件（如 `doudizhu.yaml`、`gouji_6decks.yaml`）。
 - AI 开发规范详见 `AI开发标准/` 目录（代码注释规范 + 类型注解规范），已在第 0 节概述。
 
 ## 2) 架构与数据流（改逻辑前必须理解）
@@ -38,7 +38,9 @@
 - 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `YoloInferencer.detect(img)` YOLO 纯视觉推理（计时）→ `LayoutAnalyzer.parse_and_sort()` 几何空间划分与二维排序 → `Tracker.translate_boxes_to_cards()` 业务映射（将物理框解析为扑克点数）→ `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
 - 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。区域键名从游戏配置的 `layout_regions` 动态获取，由 `LayoutAnalyzer` 负责执行。
 - 排序不是置信度顺序：`LayoutAnalyzer` 先按行再按列，避免出牌串顺序错乱。
-- 多游戏支持：`BaseCardTracker`（`core/base_tracker.py`）为抽象基类，子类在 `core/games/` 目录下（如 `DoudizhuTracker`）。新增游戏只需：① 在 `config/games/` 添加 YAML 配置 ② 在 `core/games/` 添加 Tracker 子类 ③ 在 `TRACKER_REGISTRY` 注册。
+- 多游戏支持：`BaseCardTracker`（`core/base_tracker.py`）为抽象基类，子类在 `core/games/` 目录下（如 `DoudizhuTracker`、`Gouji6DecksTracker`）。新增游戏只需：① 在 `config/games/` 添加 YAML 配置 ② 在 `core/games/` 添加 Tracker 子类 ③ 在 `TRACKER_REGISTRY` 注册。
+- 游戏切换时主进程会调用 `settings.save_game_choice()` 更新运行时配置并重建 UI（牌面网格 + 出牌标签），子进程重建 Tracker。
+- 可视化布局编辑器的区域键名从 `settings.LAYOUT_REGIONS` 动态获取（通过 `coord.get_region_keys()` / `get_region_name_cn()`），不同游戏可以拥有不同数量和名称的布局区域。
 
 ## 3) 状态机约定（核心业务规则）
 - 状态常量在 `config/settings.py`：`WAIT_BEGIN` -> `HAS_STARTED` -> `STARTED_RECORD_CARD`。
@@ -54,7 +56,7 @@
 - 写配置使用"临时文件 + `os.replace`"原子替换模式（见 `save_device_choice` 等函数）。
 - 修改布局时同时考虑：`config/config.yaml` 的 `window_layouts` + `current_layout`。
 - 设备切换（CPU/GPU）通过 ``switch_device`` 命令即时生效，子进程重建 YoloInferencer。
-- 游戏切换通过 ``switch_game`` 命令即时生效，子进程重载游戏配置并重建 Tracker。
+- 游戏切换通过 ``switch_game`` 命令即时生效，子进程重载游戏配置并重建 Tracker。主进程调用 `settings.save_game_choice()` 更新运行时配置并重建 UI（牌面网格 + 出牌标签）。
 - 游戏配置文件位于 `config/games/` 目录，每个游戏一个 YAML 文件，包含：`total_cards`（牌组定义）、`played_zones`（出牌区域）、`layout_regions`（布局区域）。`yolo_to_card_mapping` 统一在 `config.yaml` 中管理，不同游戏共用。
 - `TOTAL_CARDS`、`PLAYED_ZONES`、`LAYOUT_REGIONS` 从游戏配置加载；`YOLO_TO_CARD_MAPPING` 从 `config.yaml` 加载。
 
@@ -68,8 +70,9 @@
 - 样式依赖动态属性：`depleted` 与 `count`，更新后需 `unpolish/polish` 触发 QSS 刷新。
 
 ## 6) 扩展工作流（布局/调试）
-- **可视化布局编辑（推荐）**：在主界面"设置"→"基本设置"页中点击"可视化编辑"，打开 `LayoutEditorDialog`。
-  - 选择目标窗口标题 → 点击"截图"（自动下沉本程序窗口避免遮挡）。
+- **可视化布局编辑（推荐）**：在主界面“设置”→“基本设置”页中点击“可视化编辑”，打开 `LayoutEditorDialog`。
+  - 区域键名和中文名从当前游戏的 `settings.LAYOUT_REGIONS` 动态获取（`coord.get_region_keys()` / `get_region_name_cn()`），支持不同游戏不同数量的区域。
+  - 选择目标窗口标题 → 点击“截图”（自动下沉本程序窗口避免遮挡）。
   - 在画布上框选五个牌区：玩家手牌 / 本家出牌 / 上家出牌 / 下家出牌 / 地主底牌。
   - 点击"预览校验"确认区域标注正确 → "保存"写入 `config.yaml`。
   - 截图时窗口下沉/恢复通过上下文管理器 `_lowered_app_windows()` 保证资源安全释放。

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 # 延迟导入以避免循环依赖
 TRACKER_REGISTRY: dict[str, str] = {
     "doudizhu": "core.games.doudizhu:DoudizhuTracker",
+    "gouji_6decks": "core.games.gouji_6decks:Gouji6DecksTracker",
 }
 
 
