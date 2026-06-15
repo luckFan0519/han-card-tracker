@@ -87,6 +87,19 @@ def _scan_game_configs() -> list[str]:
     return names if names else ['doudizhu']
 
 
+def _get_game_display_name(game_name: str) -> str:
+    """获取游戏的中文显示名称。
+
+    Args:
+        game_name: 游戏标识名（对应 config/games/ 下的 YAML 文件名，如 ``"doudizhu"``）。
+
+    Returns:
+        str: 游戏的中文显示名称（如 ``"斗地主"``）。若配置文件中无 ``game_name`` 字段则返回原标识名。
+    """
+    game_config = _load_game_config(game_name)
+    return game_config.get('game_name', game_name)
+
+
 def _load_game_config(game_name: str) -> dict:
     """加载指定游戏的配置文件。
 
