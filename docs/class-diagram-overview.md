@@ -3,7 +3,6 @@
 > 只展示类名和关系，不展开属性/方法。详细版见 [class-diagram.md](class-diagram.md)。
 
 ```mermaid
-%%{init: {'theme':'dark', 'themeVariables': {'primaryColor': '#1e1e1e', 'primaryTextColor': '#ffffff', 'primaryBorderColor': '#4a90d9', 'lineColor': '#888888', 'secondaryColor': '#2d2d2d', 'tertiaryColor': '#3d3d3d'}}}%%
 classDiagram
     direction TB
 
@@ -11,15 +10,27 @@ classDiagram
     class CardUI {
         +request_one_update()
         +on_result_ready()
+        +on_settings_clicked()
+        +on_pause_clicked()
+        +on_reset_clicked()
+        +on_layout_changed()
+        +on_device_changed()
+        +on_model_changed()
+        +on_game_changed()
     }
     class SettingsDialog {
-        +save_settings()
+        +set_current_*()
+        +refresh_layout_list()
     }
     class LayoutEditorDialog {
-        +open_editor()
+        +saved_layout_name: str
+        +saved_set_current: bool
     }
     class RectCanvas {
-        +draw_regions()
+        +rect_changed: Signal
+        +set_pixmap_from_pil()
+        +fit_to_viewport()
+        +set_rects() / get_rects()
     }
     class PreviewDialog {
         +show_preview()
@@ -28,19 +39,28 @@ classDiagram
         +paint()
     }
     class LayoutComboView {
-        +display_layouts()
+        +mousePressEvent()
     }
 
     %% ========== 推理层 ==========
     class InferenceWorker {
-        +start_worker()
-        +send_command()
+        +result_ready: Signal
+        +error: Signal
+        +finished: Signal
+        +start() / stop()
+        +request_detect() / request_reset()
+        +switch_layout() / switch_model() / switch_device() / switch_game()
+        +update_settings() / touch_time()
     }
     class GameController {
         +detect()
         +reset()
         +switch_layout()
         +switch_model()
+        +switch_device()
+        +switch_game()
+        +update_settings()
+        +touch_time()
     }
 
     %% ========== 核心层 ==========
@@ -49,40 +69,88 @@ classDiagram
         +get_cards_number()
         +translate_boxes_to_cards()
         +reset()
+        +run_game()
+        #_presses_one_frame()
+        #_check_card()
+        #_delete_played_cards()
+        #_process_all_played_zones()
+        #_get_validity_region()* str
+        +should_start_game()* bool
+        +should_start_recording()* bool
+        +on_game_started()*
+        +on_start_recording()*
+        +process_played_cards()*
     }
     class DoudizhuTracker {
-        +should_start_game()
+        +_get_validity_region() str
+        +should_start_game() bool
+        +should_start_recording() bool
+        +on_game_started()
+        +on_start_recording()
         +process_played_cards()
     }
     class YoloInferencer {
-        +detect()
-        +load_model()
+        +detect(img) tuple
+        -__load_model() tuple
+        -__load_tensorrt() YOLO
+        -__load_onnx() YOLO
     }
     class LayoutAnalyzer {
-        +parse_and_sort()
-        +sort_cards_by_topright_rowwise()
+        +parse_and_sort(raw_result, img_size) dict
+        +sort_cards_by_topright_rowwise(dets, max_rows) list
     }
     class ScreenCapture {
-        +capture_window()
+        +capture_window() PIL.Image
     }
     class ImageSaver {
-        +save_frame()
         +bootstrap()
+        +start_new_game()
+        +save_frame()
+        +set_enabled()
     }
 
     %% ========== 配置层 ==========
     class settings {
-        WINDOW_LAYOUTS
-        YOLO_MODEL_PATH
-        TOTAL_CARDS
+        <<module>>
+        +BASE_DIR / RESOURCE_DIR
+        +CONFIG_PATH
+        +WINDOW_LAYOUTS / CURRENT_LAYOUT
+        +TOTAL_CARDS / PLAYED_ZONES / LAYOUT_REGIONS
+        +YOLO_TO_CARD_MAPPING
+        +GAME_NAME / GAME_DISPLAY_NAME
+        +load_config()
+        +save_*()
     }
 
     %% ========== 工具层 ==========
-    class coord
-    class service
-    class validator
-    class trans_yolo_names_to_string
-    class styles
+    class coord {
+        <<module>>
+        +REGION_KEYS
+        +normalize_rect() / denormalize_rect()
+        +sanitize_pixel_rect()
+        +normalize_layout()
+    }
+    class service {
+        <<module>>
+        +list_visible_window_titles()
+        +capture_window_by_title()
+        +get_layout_config()
+        +save_layout()
+    }
+    class validator {
+        <<module>>
+        +validate_normalized_layout()
+        +build_preview_image()
+    }
+    class trans_yolo_names_to_string {
+        <<module>>
+        +tool_trans()
+        +trans_yolo_names_to_string()
+    }
+    class styles {
+        <<module>>
+        +load_qss()
+    }
 
     %% ========== 继承 ==========
     CardUI --|> QMainWindow
@@ -93,6 +161,7 @@ classDiagram
     InferenceWorker --|> QObject
     LayoutItemDelegate --|> QStyledItemDelegate
     LayoutComboView --|> QListView
+    DoudizhuTracker --|> BaseCardTracker
 
     %% ========== 组合（创建并持有） ==========
     CardUI *-- InferenceWorker
@@ -105,13 +174,10 @@ classDiagram
     GameController *-- BaseCardTracker
     GameController *-- ImageSaver
 
-    %% ========== 聚合（按需创建/共享单例） ==========
+    %% ========== 聚合（按需创建/共享） ==========
     CardUI o-- SettingsDialog
     SettingsDialog o-- LayoutEditorDialog
     LayoutEditorDialog o-- PreviewDialog
-
-    %% ========== 继承 ==========
-    DoudizhuTracker --|> BaseCardTracker
 
     %% ========== 依赖 ==========
     CardUI ..> settings
@@ -121,7 +187,7 @@ classDiagram
     LayoutEditorDialog ..> coord
     LayoutEditorDialog ..> validator
     InferenceWorker ..> GameController : 创建子进程实例
-    GameController ..> BaseCardTracker : 通过 create_tracker() 工厂函数创建
+    GameController ..> BaseCardTracker : 通过 create_tracker() 工厂创建
     BaseCardTracker ..> settings
     YoloInferencer ..> settings
 ```
@@ -141,5 +207,6 @@ classDiagram
 CardUI → InferenceWorker → run_controller_loop(子进程) → GameController ─┬─ ScreenCapture (截图)
                                                                           ├─ YoloInferencer (YOLO 纯视觉推理)
                                                                           ├─ LayoutAnalyzer (几何分区与排序)
+                                                                          ├─ ImageSaver (调试图片保存)
                                                                           └─ Tracker (状态机 / 业务映射)
 ```

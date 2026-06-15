@@ -30,11 +30,12 @@ sequenceDiagram
     CmdQ-->>SubProc: get("detect")
     SubProc->>Controller: detect()
     Controller->>Capture: capture_window()
-    Capture-->>Controller: PIL.Image
+    Capture-->>Controller: PIL.Image | None
     Controller->>Detector: detect(img)
     Detector->>YOLO: model(img, conf, iou, device)
     Note over Detector: time.perf_counter() 计时
     YOLO-->>Detector: results
+    Note over Detector: SAVE_DEBUG_IMAGES 时保存游戏图片
     Detector-->>Controller: (raw_result, yolo_ms)
 
     Controller->>Analyzer: parse_and_sort(raw_result, img.size)
@@ -44,12 +45,15 @@ sequenceDiagram
     Controller->>Tracker: get_cards_number(frame_data, yolo_ms)
     Tracker->>Tracker: run_game(frame_data, yolo_ms)
     Tracker->>Tracker: _presses_one_frame(frame_data, yolo_ms)
+    Note over Tracker: 有效性门禁：_get_validity_region()<br/>空则丢弃本帧
 
     Tracker->>Tracker: _check_card() 帧稳定性检查
     Tracker->>Tracker: 状态机: WAIT_BEGIN → HAS_STARTED → STARTED_RECORD_CARD
+    Tracker->>Tracker: _process_all_played_zones()
     Tracker->>Tracker: _delete_played_cards() 扣牌
-    Tracker-->>Controller: (remain_cards, show_cards: dict, yolo_ms)
+    Tracker-->>Controller: (remain_cards, show_cards, yolo_ms)
     Controller->>Controller: _format_zone_cards(show_cards)
+    Note over Controller: 过滤非出牌区域（如手牌、底牌）
     Controller-->>SubProc: (remain_cards, zone_cards, yolo_ms)
 
     SubProc->>ResultQ: put(("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms))
@@ -95,17 +99,22 @@ sequenceDiagram
 
     Worker->>SubProc: mp.Process(target=run_controller_loop)
     SubProc->>Controller: GameController(game_name, layout_name)
-    Controller->>Detector: YoloInferencer()
+
+    Controller->>DebugMgr: ImageSaver(BASE_DIR)
+    DebugMgr->>DebugMgr: bootstrap(SAVE_DEBUG_IMAGES)
+    DebugMgr-->>Controller: 就绪
+
+    Controller->>Detector: YoloInferencer(debug_manager)
     Detector->>Detector: __load_model()
+    Note over Detector: GPU: TensorRT > PyTorch CUDA + FP16<br/>CPU: ONNX > PyTorch CPU
     Detector-->>Controller: 就绪
+
     Controller->>Analyzer: LayoutAnalyzer(layout_config)
     Analyzer-->>Controller: 就绪
-    Note over Detector: GPU: TensorRT > PyTorch CUDA<br/>CPU: ONNX > PyTorch CPU
-    Detector-->>Controller: 就绪
+
     Controller->>Capture: ScreenCapture(window_title)
     Capture-->>Controller: 就绪
-    Controller->>DebugMgr: ImageSaver(BASE_DIR)
-    DebugMgr-->>Controller: 就绪
+
     Controller->>Tracker: create_tracker(game_name, layout_name, debug_manager)
     Note over Controller: 工厂函数根据 game_name 创建子类，传入 debug_manager
     SubProc->>Tracker: DoudizhuTracker(layout_name, debug_manager)
@@ -148,6 +157,13 @@ sequenceDiagram
         Note over Worker: cmd_queue.put(("switch_layout", name))
     end
 
+    alt 用户切换游戏
+        SD->>UI: on_game_change_callback(index)
+        UI->>UI: on_game_changed(index)
+        UI->>Worker: switch_game(game_name)
+        Note over Worker: cmd_queue.put(("switch_game", game_name))
+    end
+
     alt 用户点击"可视化编辑"
         SD->>UI: on_layout_editor_callback(self)
         UI->>LED: LayoutEditorDialog(...)
@@ -173,6 +189,13 @@ sequenceDiagram
         Note over Worker: 子进程重建 YoloInferencer
     end
 
+    alt 用户切换模型
+        SD->>UI: on_model_change_callback(index)
+        UI->>Settings: save_model_choice(model_name)
+        UI->>Worker: switch_model(model_name)
+        Note over Worker: 子进程重建 YoloInferencer + Tracker
+    end
+
     SD-->>UI: dialog.exec() 返回
     Note over UI: _is_settings_open=False<br/>_touch_no_target_time()<br/>重启定时器
 ```
@@ -195,7 +218,7 @@ sequenceDiagram
     Worker->>Tracker: get_cards_number(frame_data, yolo_ms)
 
     Note over Tracker: === WAIT_BEGIN 阶段 ===
-    Note over Tracker: validity_region 非空
+    Note over Tracker: _presses_one_frame():<br/>_get_validity_region() 非空才处理
     Tracker->>Tracker: should_start_game() 稳定?
     alt 连续帧不稳定
         Note over Tracker: 保持 WAIT_BEGIN
@@ -303,14 +326,15 @@ sequenceDiagram
     MainLoop->>GC: GameController(game_name, layout_name)
     GC->>Settings: WINDOW_LAYOUTS[layout_name]
     Settings-->>GC: layout_config
-    GC->>Detector: YoloInferencer()
-    Note over Detector: 加载 YOLO 模型<br/>TensorRT > ONNX > PyTorch
+    GC->>GC: ImageSaver(BASE_DIR) + bootstrap()
+    GC->>Detector: YoloInferencer(debug_manager)
+    Note over Detector: 加载 YOLO 模型<br/>GPU: TensorRT > PyTorch CUDA<br/>CPU: ONNX > PyTorch CPU
     Detector-->>GC: 就绪
     GC->>Analyzer: LayoutAnalyzer(layout_config)
     Analyzer-->>GC: 就绪
     GC->>Capture: ScreenCapture(window_title)
     Capture-->>GC: 就绪
-    GC->>Tracker: «factory» create_tracker(game_name, layout_name)
+    GC->>Tracker: «factory» create_tracker(game_name, layout_name, debug_manager)
     Tracker-->>GC: Tracker 子类实例
 
     Note over MainLoop: === 主循环：阻塞等待命令 ===
@@ -388,17 +412,37 @@ sequenceDiagram
         Settings-->>GC: layout_config
         GC->>Analyzer: LayoutAnalyzer(layout_config) [重建]
         GC->>Capture: ScreenCapture(window_title) [重建]
-        GC->>Tracker: «factory» create_tracker(game_name, layout_name) [重建]
+        GC->>Tracker: «factory» create_tracker(game_name, layout_name, debug_manager) [重建]
         Note over GC: Detector 不变，其余三个组件全部重建
 
     %% ===== 切换模型命令 =====
     else cmd == ("switch_model", name)
         MainLoop->>GC: switch_model(model_name)
         GC->>Settings: YOLO_MODEL_NAME = model_name<br/>YOLO_MODEL_PATH = _resolve_model_path()
-        GC->>Detector: YoloInferencer() [重建]
+        GC->>Detector: YoloInferencer(debug_manager) [重建]
         Note over Detector: 加载新模型权重
-        GC->>Tracker: «factory» create_tracker(game_name, layout_name) [重建]
+        GC->>Tracker: «factory» create_tracker(game_name, layout_name, debug_manager) [重建]
         Note over GC: Analyzer / Capture 不变，Detector 和 Tracker 重建
+
+    %% ===== 切换设备命令 =====
+    else cmd == ("switch_device", name)
+        MainLoop->>GC: switch_device(device_name)
+        GC->>Settings: DEVICE_CHOICE = device_name
+        GC->>Detector: YoloInferencer(debug_manager) [重建]
+        Note over GC: 其余组件不变
+
+    %% ===== 切换游戏命令 =====
+    else cmd == ("switch_game", name)
+        MainLoop->>GC: switch_game(game_name)
+        GC->>Settings: save_game_choice(game_name)
+        GC->>Tracker: «factory» create_tracker(game_name, layout_name, debug_manager) [重建]
+        Note over GC: 其余组件不变
+
+    %% ===== 同步设置命令 =====
+    else cmd == ("update_settings", dict)
+        MainLoop->>GC: update_settings(updates)
+        GC->>Settings: setattr(settings, key, value)
+        Note over GC: 置信度/IOU 同步到 YoloInferencer<br/>SAVE_DEBUG_IMAGES 通过 set_enabled() 热切换
 
     %% ===== 刷新时间命令 =====
     else cmd == ("touch_time",)

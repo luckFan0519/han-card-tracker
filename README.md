@@ -1,49 +1,57 @@
 # Han 记牌器
-基于YOLO深度学习的智能斗地主记牌器，**自动识别游戏中的扑克牌并实时追踪剩余牌数量。**
+
+基于 YOLO 深度学习的智能斗地主记牌器，**自动识别游戏窗口中的扑克牌并实时追踪剩余牌数量。**
+
 ## 主界面
-![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220839.png?raw=true)
-![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-02-01%20220932.png?raw=true)
-![](https://github.com/luckFan0519/Han_card_tracker/blob/han_card_tracker_v2.1/images/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202026-04-18%20001412.png?raw=true)
 
-
-
+![](images/1%20(1).png?raw=true)
+![](images/1%20(2).png?raw=true)
 ## 功能特点
 
-- 🎴 **自动识别** - 使用YOLO模型自动识别屏幕上的扑克牌
-- 📊 **实时记牌** - 实时显示每种牌的剩余数量
-- 📝 **出牌记录** - 显示上家、本家、下家所出的牌
-- 🔄 **智能重置** - 长时间识别不到牌时自动重置记牌器
-- ⚡ **GPU加速** - 支持CUDA加速，识别速度更快
-- 🎯 **多布局支持** - 可适配不同斗地主软件（支持自定义窗口布局）
-- ⏸️ **暂停/恢复** - 可随时暂停和恢复检测
-- ⚙️ **灵活配置** - 支持检测间隔、重置时间、置信度等多种参数调整
-- 🧪 **调试截图留存** - 可按局保存原始截图与 YOLO 标注截图，便于排查误识别
+- 🎴 **自动识别** — 使用 YOLO 模型自动识别屏幕上的扑克牌
+- 📊 **实时记牌** — 实时显示每种牌的剩余数量
+- 📝 **出牌记录** — 显示上家、本家、下家所出的牌
+- 🔄 **智能重置** — 长时间识别不到牌时自动重置记牌器
+- ⚡ **GPU 加速** — 支持 CUDA / TensorRT / ONNX 多级加速
+- 🎯 **多布局支持** — 可视化编辑适配不同斗地主软件的窗口布局
+- 🎮 **多游戏支持** — 可扩展的游戏 Tracker 架构，当前支持斗地主
+- ⏸️ **暂停/恢复** — 可随时暂停和恢复检测
+- ⚙️ **灵活配置** — 检测间隔、重置时间、置信度等多种参数可调
+- 🧪 **调试截图留存** — 可按局保存原始截图与 YOLO 标注截图，便于排查误识别
 
 ## 技术栈
 
-- **PySide6** - Qt GUI框架，构建现代化用户界面
-- **YOLO (Ultralytics)** - 目标检测模型，高精度识别扑克牌
-- **PyTorch** - 深度学习框架，支持GPU/CPU推理
-- **OpenCV** - 图像处理
-- **win32gui** - Windows窗口截图
-- **PyYAML** - 配置管理
+| 技术 | 用途 |
+|------|------|
+| **PySide6** | Qt GUI 框架，构建现代化用户界面 |
+| **YOLO (Ultralytics)** | 目标检测模型，高精度识别扑克牌 |
+| **PyTorch** | 深度学习框架，支持 GPU/CPU 推理 |
+| **TensorRT / ONNX Runtime** | 推理加速（自动导出，可选） |
+| **win32gui** | Windows 窗口截图 |
+| **PyYAML** | 配置管理 |
+| **Pillow** | 图像处理 |
 
 ## 系统要求
 
-- Python 3.9+
-- NVIDIA GPU（可选，用于加速）
+- **操作系统**：Windows（依赖 win32gui 截图链路）
+- **Python**：3.10+
+- **GPU**：NVIDIA GPU（可选，用于加速推理）
 
 ## 安装步骤
 
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/yourusername/ddz_cards_tracker.git
-cd ddz_cards_tracker
+git clone https://github.com/luckFan0519/Han_card_tracker.git
+cd Han_card_tracker
 ```
 
 ### 2. 创建虚拟环境（推荐）
 
+```bash
+python -m venv venv
+venv\Scripts\activate   # Windows
+```
 
 ### 3. 安装依赖
 
@@ -51,29 +59,30 @@ cd ddz_cards_tracker
 pip install -r requirements.txt
 ```
 
-### 4. YOLO模型
+### 4. YOLO 模型
 
-所有模型均位于 `yolo/weights/` 下的子目录中：
+所有模型位于 `yolo/weights/` 下的子目录中：
 
 ```
 yolo/weights/
-├── yolov11n_imgsz_960/         # YOLOv11n 模型
+├── yolov11n_imgsz_960/         # YOLOv11n 模型（最快）
 │   └── best.pt
-├── yolov11s_imgsz_960/         # YOLOv11s 模型
+├── yolov11s_imgsz_960/         # YOLOv11s 模型（推荐）
 │   └── best.pt
-└── yolov11m_imgsz_960/         # YOLOv11m 模型
+└── yolov11m_imgsz_960/         # YOLOv11m 模型（最准）
     └── best.pt
 ```
 
-**更换模型方法：**
+**更换模型**：在 设置 → 高级设置 → YOLO 模型 中直接选择。
 
-在设置 → 高级设置 → YOLO 模型 中直接选择即可，无需手动复制文件。
-
-**训练自己的模型：**
-
-如果需要训练自己的YOLO模型用于检测，作者的训练数据已发布在Releases中。将训练好的模型放入 `yolo/weights/` 下的新建子目录中（只需 `best.pt`，无需 `best.onnx`），重启后即可在设置中识别并选择。
+**训练自己的模型**：作者的训练数据已发布在 Releases 中。将训练好的模型放入 `yolo/weights/` 下的新建子目录（需包含 `best.pt`），重启后即可识别。
 
 ## 使用方法
+
+### 0. 配置游戏窗口
+
+见下文**自定义窗口布局**
+![](images/layout_debug.png?raw=true)
 
 ### 1. 启动程序
 
@@ -83,64 +92,72 @@ python main.py
 
 ### 2. 打开斗地主游戏
 
-确保游戏窗口标题与配置中的 `window_title` 匹配（默认为"JJ斗地主"）
+确保游戏窗口标题与配置中的 `window_title` 匹配（默认为"JJ斗地主"）。
 
 ### 3. 开始游戏
 
-程序会自动识别游戏中的扑克牌并开始记牌
+程序会自动识别游戏中的扑克牌并开始记牌。
 
 ### 4. 使用设置
 
-点击"设置"按钮可以调整以下参数：
-- 检测间隔（0.1秒 - 0.5秒）
-- 窗口布局（支持多款斗地主软件）
-- 设备选择（CPU/GPU）
-- 重置时间（1.0秒 - 5.0秒）
-- 帧长度（1-6帧）
+点击"设置"按钮可调整以下参数：
+
+**基本设置：**
+- 游戏选择
+- 布局配置管理（含可视化编辑 / 删除）
+- 设备选择（CPU / GPU）
 - 窗口置顶
 - 显示出牌记录
 - 调试模式（终端日志）
-- 保存游戏图片
-- 显示耗时（标题栏推理/整轮耗时）
+
+**高级设置：**
 - YOLO 模型选择
 - 置信度阈值
+- 检测间隔（0.1 秒 ~ 0.5 秒）
+- 重置时间（1.0 秒 ~ 5.0 秒）
+- 帧长度（1~6 帧）
+- 保存游戏图片
+- 显示耗时（标题栏推理/整轮耗时）
 
 ## 配置说明
 
-配置文件位于 `config/config.yaml`，主要参数：
+### 运行时配置（`config/config.yaml`）
 
-| 参数 | 说明 | 默认值   |
-|------|------|-------|
-| `detect_interval_sec` | 检测间隔（秒） | 0.2   |
-| `reset_time` | 无目标重置时间（秒） | 3.0   |
-| `frame_length` | 连续帧验证长度 | 3     |
-| `device_choice` | 设备选择（cpu/cuda） | cuda  |
-| `yolo_confidence_threshold` | YOLO置信度阈值 | 0.6   |
-| `yolo_iou_threshold` | YOLO IOU阈值 | 0.45  |
-| `always_on_top` | 窗口置顶 | true  |
-| `show_played_cards` | 显示出牌记录 | true  |
-| `debug_mode` | 调试模式（控制终端日志输出） | false |
-| `save_debug_images` | 保存游戏图片（与调试模式分开控制） | false |
-| `show_timing` | 在标题栏显示推理耗时和整轮耗时 | true |
-| `little_joker_shown` | 小王显示字符（出牌记录） | 🃟    |
-| `big_joker_shown` | 大王显示字符（出牌记录） | 🃏    |
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `detect_interval_sec` | 检测间隔（秒） | 0.2 |
+| `reset_time` | 无目标重置时间（秒） | 3.0 |
+| `frame_length` | 连续帧验证长度 | 3 |
+| `device_choice` | 设备选择（`cpu` / `cuda`） | cuda |
+| `yolo_model_name` | YOLO 模型子目录名 | yolov11s_imgsz_960 |
+| `yolo_confidence_threshold` | YOLO 置信度阈值 | 0.6 |
+| `yolo_iou_threshold` | YOLO IOU 阈值 | 0.45 |
+| `always_on_top` | 窗口置顶 | true |
+| `show_played_cards` | 显示出牌记录 | true |
+| `debug_mode` | 调试模式（终端日志输出） | false |
+| `save_debug_images` | 保存游戏图片 | false |
+| `show_timing` | 标题栏显示耗时 | true |
+| `little_joker_shown` | 小王显示字符（出牌记录） | 🃟 |
+| `big_joker_shown` | 大王显示字符（出牌记录） | 🃏 |
 
-**注意：** `little_joker_shown` 和 `big_joker_shown` 仅影响**出牌记录区域**的显示，不影响主界面牌名显示。
+> **注意：** `little_joker_shown` 和 `big_joker_shown` 仅影响出牌记录区域的显示，不影响主界面牌名显示。
 
-### 游戏截图说明（save_debug_images）
+### 游戏配置（`config/games/`）
 
-- 当 `save_debug_images: true` 时，会保存两类图片：
-  - 原始截图：`games_images/row/game_N/`
-  - YOLO 标注图：`games_images/yolo/game_N/`
-- 每局会创建一个新目录，目录名为 `game_1`, `game_2`, `game_3` ...，图片名为 `1.png`, `2.png` ...
-- 每局最多保存 `1000` 张；达到上限后该局后续截图不再保存，并仅打印一次提示。
-- 最多只保留最近 `3` 局；新局开始时会自动删除更旧的局目录。
-- `debug_mode` 仅控制终端日志输出，与图片保存无关。
+每个游戏一个 YAML 文件，定义牌组、出牌区域和布局区域。当前包含 `doudizhu.yaml`。
 
-### **自定义窗口布局 (重要)**
-如需适配其他斗地主软件，**推荐通过可视化编辑快速添加布局**
-<br>
-也可以在 `config.yaml` 中添加新的布局配置：
+### 调试截图（`save_debug_images`）
+
+- 保存内容为"成对帧"：原始截图 → `games_images/row/game_N/`，YOLO 标注图 → `games_images/yolo/game_N/`
+- 每局最多 `1000` 张；达到上限后不再保存，仅打印一次提示
+- 最多保留最近 `3` 局；新局创建时自动清理更旧目录
+- `debug_mode` 仅控制终端日志输出，与图片保存分开控制
+
+### 自定义窗口布局
+
+推荐通过 **设置 → 基本设置 → 可视化编辑** 快速添加布局。
+
+也可在 `config.yaml` 中手动添加：
 
 ```yaml
 window_layouts:
@@ -148,124 +165,139 @@ window_layouts:
     window_title: "你的斗地主窗口标题"
     layout:
       player_hand: [x1, y1, x2, y2]      # 玩家手牌区域
-      player_played: [x1, y1, x2, y2]    # 玩家出牌区域
+      player_played: [x1, y1, x2, y2]    # 本家出牌区域
       opponent_left: [x1, y1, x2, y2]    # 上家出牌区域
       opponent_right: [x1, y1, x2, y2]   # 下家出牌区域
       landlord_cards: [x1, y1, x2, y2]   # 地主底牌区域
 ```
 
-区域坐标为归一化坐标（0.0-1.0），表示相对于窗口的位置。
-<br>
-**注意 ：**<br>
-使用可视化编辑添加布局时，请务必将目标游戏窗口**置于屏幕最前方（最上方）**，确保游戏界面完全可见、不被任何其他窗口遮挡，否则会影响区域框选的准确性。<br>
-窗口截图时，确保游戏窗口完全可见，不被遮挡。可视化添加时,不要被除记牌器之外的窗口遮挡.
-<br>
-同一软件不同模式下的扑克牌布局可能不同，需要根据实际情况调整布局配置。
-<br>
-最终布局图实例如下：
-![](https://github.com/luckFan0519/ddz_cards_tracker/blob/main/images/layout_debug.png?raw=true)
+区域坐标为归一化坐标（0.0~1.0），表示相对于窗口的位置。
+
+> **注意：** 使用可视化编辑时，请将目标游戏窗口置于屏幕最前方，确保完全可见、不被遮挡。同一软件不同模式下的扑克牌布局可能不同，需按实际调整。
+
 ## 项目结构
 
 ```
-ddz_cards_tracker_8/
-├── main.py                      # 程序入口
-├── requirements.txt             # 依赖包
+han-card-tracker/
+├── main.py                          # 程序入口
+├── requirements.txt                 # 依赖包
 ├── config/
-│   ├── settings.py             # 配置管理
-│   └── config.yaml             # YAML配置文件
+│   ├── settings.py                  # 配置管理（运行时常量 + 持久化函数）
+│   ├── config.yaml                 # 运行时配置文件
+│   └── games/
+│       └── doudizhu.yaml            # 斗地主游戏配置
 ├── core/
-│   ├── card_tracker.py         # 记牌逻辑（状态机）
-│   ├── yolo_inferencer.py     # YOLO 推理器（纯视觉推理）
-│   ├── inference_process.py    # 多进程推理（子进程运行YOLO，避免UI卡顿）
-│   ├── image_saver.py          # 游戏截图保存（按局保存/清理）
-│   └── screen_capture.py       # 窗口截图
-├── games_images/               # 游戏截图输出目录（运行时生成）
-│   ├── row/
-│   │   └── game_1/             # 原始截图：1.png ~ 1000.png
-│   └── yolo/
-│       └── game_1/             # YOLO标注图：与 row 同名同帧
+│   ├── game_controller.py          # 游戏控制器（编排截图→推理→状态更新）
+│   ├── inference_process.py        # 多进程推理 Worker（主进程侧）
+│   ├── yolo_inferencer.py          # YOLO 推理器（纯视觉推理）
+│   ├── layout_analyzer.py          # 布局几何分析（分区 + 二维排序）
+│   ├── base_tracker.py             # 牌局状态跟踪器基类（三阶段状态机）
+│   ├── screen_capture.py           # Windows 窗口截图
+│   ├── image_saver.py              # 游戏图片按局保存与自动清理
+│   └── games/
+│       ├── __init__.py             # Tracker 工厂 + 注册表
+│       └── doudizhu.py             # 斗地主 Tracker 子类
 ├── ui/
-│   ├── card_ui.py              # CardUI 主窗口类
-│   ├── main_window.py          # 主窗口逻辑
-│   ├── settings_dialog.py      # 设置对话框
-│   ├── layout_editor_dialog.py # 可视化布局编辑器
-│   ├── styles.py               # 样式加载
-│   └── ui.qss                  # QSS样式
+│   ├── main_window.py              # 主窗口（CardUI）
+│   ├── settings_dialog.py         # 设置对话框
+│   ├── layout_editor_dialog.py     # 可视化布局编辑器
+│   ├── styles.py                  # QSS 样式加载
+│   └── ui.qss                     # QSS 样式表
 ├── utils/
-│   ├── trans_yolo_names_to_string.py  # 牌名转换
+│   ├── trans_yolo_names_to_string.py  # 牌名转换工具
 │   ├── add_layout/                    # 命令行布局工具
 │   │   ├── draw_layout.py
-│   │   ├── list_windows.py
-│   │   └── screen_capture.py
+│   │   └── list_windows.py
 │   └── layout_editor/                 # 布局编辑器核心逻辑
 │       ├── coord.py
 │       ├── service.py
 │       └── validator.py
-└── yolo/
-    └── weights/                 # 所有模型均在子目录中
-        ├── yolov11n_imgsz_960/  # YOLOv11n 模型
-        │   └── best.pt
-        ├── yolov11s_imgsz_960/  # YOLOv11s 模型
-        │   └── best.pt
-        └── yolov11m_imgsz_960/  # YOLOv11m 模型
-            └── best.pt
+├── games_images/                   # 游戏截图输出目录（运行时生成）
+│   ├── row/game_N/                 # 原始截图
+│   └── yolo/game_N/               # YOLO 标注图
+├── yolo/
+│   └── weights/                    # 所有模型均在子目录中
+│       ├── yolov11n_imgsz_960/
+│       ├── yolov11s_imgsz_960/
+│       └── yolov11m_imgsz_960/
+├── AI开发标准/                      # AI 辅助开发规范
+│   ├── 开发总原则.md
+│   ├── Python 代码注释规范.md
+│   └── Python 类型注解规范.md
+└── docs/                           # 架构文档
+    ├── class-diagram-overview.md
+    ├── class-diagram.md
+    └── sequence-diagram.md
 ```
 
 ## 工作原理
 
-1. **窗口截图** - 使用win32gui截取游戏窗口
-2. **YOLO检测** - 识别窗口中的所有扑克牌
-3. **区域分类** - 根据布局配置将牌分类到不同区域
-4. **状态机处理** - 使用三状态机管理游戏流程
-   - `WAIT_BEGIN`: 等待地主底牌
-   - `HAS_STARTED`: 检测玩家手牌
-   - `STARTED_RECORD_CARD`: 记录出牌
-5. **连续帧验证** - 连续N帧相同才确认出牌，避免误识别
-6. **更新UI** - 实时更新剩余牌数量和出牌记录
+### 架构概览
+
+程序采用**多进程架构**，将 YOLO 推理放到独立子进程中运行，彻底绕过 GIL，保证 UI 流畅：
+
+```
+主进程 (UI)                              子进程 (推理)
+┌────────────────┐                      ┌──────────────────────┐
+│ CardUI          │  ──cmd_queue──►     │  GameController      │
+│  (QMainWindow)  │                      │   ├─ ScreenCapture   │
+│  InferenceWorker│  ◄─result_queue──   │   ├─ YoloInferencer  │
+│  (QObject)      │                      │   ├─ LayoutAnalyzer  │
+└────────────────┘                      │   ├─ ImageSaver      │
+                                        │   └─ Tracker 子类    │
+                                        └──────────────────────┘
+```
+
+### 检测流水线
+
+1. **窗口截图** — `ScreenCapture` 使用 Win32 API 截取游戏窗口
+2. **YOLO 检测** — `YoloInferencer` 识别窗口中所有扑克牌（仅纯视觉推理）
+3. **几何分区** — `LayoutAnalyzer` 按布局配置将检测框分区并做二维排序
+4. **业务映射** — `Tracker` 将 YOLO 标签转换为牌点名称
+5. **状态机处理** — 三阶段状态机管理游戏流程：
+   - `WAIT_BEGIN`：等待地主底牌稳定
+   - `HAS_STARTED`：检测玩家手牌稳定
+   - `STARTED_RECORD_CARD`：记录出牌
+6. **连续帧验证** — 连续 N 帧相同才确认出牌，避免误识别
+7. **更新 UI** — 通过信号通知主窗口更新剩余牌数量和出牌记录
+
+### 模型加载策略
+
+- **GPU**：TensorRT（FP16）> PyTorch CUDA + FP16
+- **CPU**：ONNX Runtime > PyTorch CPU
+
+ONNX / TensorRT 引擎会在首次使用时自动从 `best.pt` 导出。
 
 ## 常见问题
 
 ### Q: 识别不准确怎么办？
 
 A: 可以尝试以下方法：
-1. 调整 `yolo_confidence_threshold` 阈值
-2. 增加 `frame_length` 帧长度
+1. 调整置信度阈值（降低阈值会识别更多但可能误检）
+2. 增加帧长度（提高连续帧确认数）
 3. 检查窗口布局配置是否正确
 4. 确保游戏窗口完全可见，不被遮挡
-5. 尝试使用更高精度的模型（如yolov11m）
+5. 尝试使用更高精度的模型（如 yolov11m）
 
 ### Q: 程序卡顿怎么办？
 
 A: 可以尝试：
 1. 增加检测间隔时间
-2. 使用GPU加速（如果有NVIDIA显卡）
-3. 使用更小的模型（如yolov11n）
+2. 使用 GPU 加速（如有 NVIDIA 显卡）
+3. 使用更小的模型（如 yolov11n）
 
 ### Q: 如何适配其他斗地主软件？
 
-A: 在设置 → 基本设置 → 可视化编辑布局  添加新的窗口布局配置。
+A: 在 设置 → 基本设置 → 可视化编辑 中添加新的窗口布局配置。
 
-### Q: 如何更换YOLO模型？
+### Q: 如何更换 YOLO 模型？
 
-A: 在设置 → 高级设置 → YOLO 模型 中直接选择即可，也可将自定义模型放入 `yolo/weights/` 下的子目录中（需包含 `best.pt`），重启后即可在下拉框中看到。
-
-## 开发计划
-
-- [ ] 支持更多卡牌游戏
-- [ ] 添加牌型分析功能
-- [ ] 美化用户界面
-- [ ] 添加出牌提示功能
-- [ ] 支持Linux和macOS
-
+A: 在 设置 → 高级设置 → YOLO 模型 中直接选择。也可将自定义模型放入 `yolo/weights/` 下的新建子目录（需包含 `best.pt`），重启后即可识别。
 
 ## 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+本项目采用 MIT 许可证 — 详见 [LICENSE](LICENSE) 文件。
 
 ## 免责声明
 
 本工具仅供学习和娱乐使用，请勿用于任何商业用途或违反游戏服务条款的行为。
-
----
-
-如果觉得这个项目对你有帮助，请给个 ⭐ Star 支持一下！欢迎提交 Issue 沟通或建议，期待你的反馈！

@@ -7,7 +7,7 @@
 
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (
-    QWidget, QLabel, QVBoxLayout, QGridLayout, QPushButton, QHBoxLayout, QMainWindow, QSizePolicy, QFrame
+    QWidget, QLabel, QVBoxLayout, QGridLayout, QPushButton, QHBoxLayout, QMainWindow, QSizePolicy
 )
 from core.inference_process import InferenceWorker
 from config.settings import TOTAL_CARDS
@@ -143,22 +143,12 @@ class CardUI(QMainWindow):
         first_row_layout.addLayout(right_cards_layout, 1)  # 右侧占主要空间
 
         # -------------------------
-        # 第二部分：出牌区域（放在记牌区域的右侧）
+        # 第二大行：显示上家、本家、下家的三行字符串
         # -------------------------
         self.second_row_layout = QVBoxLayout()
         self.second_row_layout.setContentsMargins(0, 0, 0, 0)
         self.second_row_layout.setSpacing(3)
-
-        # 竖直分隔线
-        self.played_cards_separator = QFrame()
-        self.played_cards_separator.setFrameShape(QFrame.VLine)
-        self.played_cards_separator.setFrameShadow(QFrame.Sunken)
-        first_row_layout.addWidget(self.played_cards_separator)
-
-        # 出牌区域容器（方便整体显示/隐藏）
-        self.played_cards_widget = QWidget()
-        self.played_cards_widget.setLayout(self.second_row_layout)
-        first_row_layout.addWidget(self.played_cards_widget)
+        # 注意：这里不立即添加到root，而是在_update_played_cards_visibility中根据设置添加
 
         # 初始化出牌标签（从游戏配置动态生成）
         self.played_cards_labels: dict[str, QLabel] = {}
@@ -591,20 +581,12 @@ class CardUI(QMainWindow):
                         lbl.setVisible(True)
                 except Exception:
                     pass
-            if hasattr(self, 'played_cards_widget'):
-                self.played_cards_widget.setVisible(True)
-            if hasattr(self, 'played_cards_separator'):
-                self.played_cards_separator.setVisible(True)
         else:
             for key, lbl in self.played_cards_labels.items():
                 try:
                     lbl.setVisible(False)
                 except Exception:
                     pass
-            if hasattr(self, 'played_cards_widget'):
-                self.played_cards_widget.setVisible(False)
-            if hasattr(self, 'played_cards_separator'):
-                self.played_cards_separator.setVisible(False)
         # Force a geometry and repaint pass
         try:
             self.central_widget.updateGeometry()
@@ -918,28 +900,29 @@ class CardUI(QMainWindow):
     def _update_played_cards_visibility(self):
         """
         根据设置更新玩家所出的牌的可见性
-        出牌区域在记牌区域右侧，通过容器 widget 的显隐控制空间分配
         """
         visible = self._show_played_cards
 
         if visible:
+            # 检查second_row_layout是否已经在root_layout中
+            if self.second_row_layout.parent() is None:
+                self.root_layout.addLayout(self.second_row_layout)
+
             for key, lbl in self.played_cards_labels.items():
                 if lbl.parent() is None:
                     self.second_row_layout.addWidget(lbl)
                 lbl.setVisible(True)
                 lbl.setMaximumHeight(16777215)
                 lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-            self.played_cards_widget.setVisible(True)
-            self.played_cards_separator.setVisible(True)
         else:
+            # 隐藏并从布局移除标签（不要 setParent(None)，否则控件会脱离父窗口并可能无法恢复）
             for key, lbl in self.played_cards_labels.items():
                 try:
                     self.second_row_layout.removeWidget(lbl)
                 except Exception:
                     pass
                 lbl.setVisible(False)
-            self.played_cards_widget.setVisible(False)
-            self.played_cards_separator.setVisible(False)
+            # 不要移除 second_row_layout 的父关系，保留布局对象以便再次添加时能稳定工作
 
         # 强制窗口调整大小
         self.adjustSize()

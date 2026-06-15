@@ -214,15 +214,14 @@ class SettingsDialog(QDialog):
         reset_layout.addStretch()
         basic_layout.addLayout(reset_layout)
 
-        # 游戏选择（下拉框显示中文名称，索引与 _scan_game_configs() 一一对应）
-        from config.settings import _scan_game_configs, _get_game_display_name, GAME_NAME
+        # 游戏选择
+        from config.settings import _scan_game_configs, GAME_NAME
         game_names = _scan_game_configs()
-        game_display_names = [_get_game_display_name(name) for name in game_names]
         self.combo_game = self._add_combo_row(
             basic_layout,
             "游戏选择：",
             "GameCombo",
-            game_display_names,
+            game_names,
             self._on_game_changed,
             tooltip="选择要支持的卡牌游戏类型",
         )
@@ -559,11 +558,9 @@ class SettingsDialog(QDialog):
         """设置当前游戏选择。
 
         Args:
-            game_name: 游戏标识名（如 ``"doudizhu"``），方法内部会转换为中文显示名匹配下拉框。
+            game_name: 游戏名称（如 ``"doudizhu"``）。
         """
-        from config.settings import _get_game_display_name
-        display_name = _get_game_display_name(game_name)
-        index = self.combo_game.findText(display_name)
+        index = self.combo_game.findText(game_name)
         self._set_combo_current_safely(self.combo_game, index)
 
     def set_current_reset_time(self, reset_time):

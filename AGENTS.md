@@ -6,13 +6,13 @@
 
 项目在 `AI开发标准/` 目录下维护了代码风格规范，**所有新增/修改代码必须遵守**：
 
+- **`AI开发标准/开发总原则.md`**：效率与优美优先、变更策略、输出要求。
 - **`AI开发标准/Python 代码注释规范.md`**：
   - 所有函数/方法/类必须写 Google 风格 Docstring（中文说明 + 英文关键字：`Args / Returns / Raises / Examples / Attributes / TODO`）。
   - 类型注解必须完整（函数参数、返回值；类属性在 `Attributes` 写明）。
   - 异常必须在 `Raises` 中逐条写清触发条件。
   - 示例必须可运行（`>>>` 形式）。
   - 输入校验：类型不对抛 `TypeError`，取值/业务约束不满足抛 `ValueError`。
-
 - **`AI开发标准/Python 类型注解规范.md`**：
   - 优先使用现代写法（Python 3.10+）：`X | Y`、`list[str]`、`dict[str, int]`。
   - 每个函数必须标注参数类型 + 返回值类型；无返回值用 `-> None`。
@@ -23,78 +23,220 @@
 **硬性约束**：输出的每一个 `def` 都必须带 Docstring，每一个 `class` 都必须带类 Docstring 并为 `__init__` 写 Docstring。
 
 ## 1) 先看什么（最快进入状态）
+
 - 入口是 `main.py`：创建 `QApplication`、加载 `ui/ui.qss`、启动 `CardUI`。
-- 业务主链路是 `ui/main_window.py` -> `core/inference_process.py` -> `core/game_controller.py` -> `core/games/<game>.py` -> `core/base_tracker.py` -> `core/yolo_inferencer.py` -> `core/screen_capture.py`。
+- 业务主链路：`ui/main_window.py` → `core/inference_process.py` → `core/game_controller.py` → `core/games/<game>.py` → `core/base_tracker.py` → `core/yolo_inferencer.py` → `core/screen_capture.py`。
 - 配置集中在 `config/settings.py`（运行时常量 + 保存函数）与 `config/config.yaml`（可编辑参数）。
 - 游戏配置在 `config/games/` 目录下，每个游戏一个 YAML 文件（如 `doudizhu.yaml`）。
-- AI 开发规范详见 `AI开发标准/` 目录（代码注释规范 + 类型注解规范），已在第 0 节概述。
+- AI 开发规范详见 `AI开发标准/` 目录（开发总原则 + 代码注释规范 + 类型注解规范），已在第 0 节概述。
 
 ## 2) 架构与数据流（改逻辑前必须理解）
-- UI 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务。
-- 后台执行：`InferenceWorker`（`core/inference_process.py`）将推理放到独立子进程，通过 `multiprocessing.Queue` 通信，彻底绕过 GIL，UI 不再因推理耗时而卡顿。
-- 子进程主循环：`GameController`（`core/game_controller.py`）运行在子进程中，通过组合模式持有 `ScreenCapture`、`YoloInferencer`、`LayoutAnalyzer`、`Tracker` 和 `ImageSaver` 五个核心组件，编排截图→纯视觉识别→空间划分→业务映射→状态更新的完整流程。`run_controller_loop()` 为子进程入口函数，通过命令队列接收指令、结果队列回传数据。
-- 命令协议：`"detect"` / `"reset"` / `("switch_layout", name)` / `("switch_model", name)` / `("switch_device", name)` / `("switch_game", name)` / `("update_settings", dict)` / `("touch_time",)` / `None`（终止）。
-- 结果协议：`("ok", {"remain_cards": dict, "zone_cards": dict}, yolo_ms)` / `("error", str)`。其中 `remain_cards` 是 `dict[str, int]`（每张牌剩余数量），`zone_cards` 是 `dict[str, list[list[str]]]`（各出牌区域的出牌记录，key 为 `played_zones` 的 key）。
-- 检测流水线：`GameController.detect()` = `ScreenCapture.capture_window()` 截图 → `YoloInferencer.detect(img)` YOLO 纯视觉推理（计时）→ `LayoutAnalyzer.parse_and_sort()` 几何空间划分与二维排序 → `Tracker.translate_boxes_to_cards()` 业务映射（将物理框解析为扑克点数）→ `Tracker.get_cards_number(frame_data, yolo_ms)` 状态机更新。
-- 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域；区域是归一化坐标（0~1）。区域键名从游戏配置的 `layout_regions` 动态获取，由 `LayoutAnalyzer` 负责执行。
-- 排序不是置信度顺序：`LayoutAnalyzer` 先按行再按列，避免出牌串顺序错乱。
-- 多游戏支持：`BaseCardTracker`（`core/base_tracker.py`）为抽象基类，子类在 `core/games/` 目录下（如 `DoudizhuTracker`）。新增游戏只需：① 在 `config/games/` 添加 YAML 配置 ② 在 `core/games/` 添加 Tracker 子类 ③ 在 `TRACKER_REGISTRY` 注册。
+
+### 多进程架构
+
+- **主进程**（UI）：`CardUI`（`ui/main_window.py`）+ `InferenceWorker`（`core/inference_process.py`）
+- **子进程**（推理）：`GameController`（`core/game_controller.py`）+ 五个核心组件
+- 通信方式：`multiprocessing.Queue`（命令队列 `cmd_queue` + 结果队列 `result_queue`）
+- UI 不因推理耗时而卡顿；子进程不操作任何 Qt 对象
+
+### 命令协议（`cmd_queue`）
+
+| 命令 | 说明 |
+|------|------|
+| `"detect"` | 执行一次识别 |
+| `"reset"` | 重置记牌器状态 |
+| `("switch_layout", name)` | 切换布局（重建 LayoutAnalyzer + ScreenCapture + Tracker） |
+| `("switch_model", name)` | 切换模型（重建 YoloInferencer + Tracker） |
+| `("switch_device", name)` | 切换设备（重建 YoloInferencer） |
+| `("switch_game", name)` | 切换游戏（重载游戏配置 + 重建 Tracker） |
+| `("update_settings", dict)` | 同步运行时设置到子进程 |
+| `("touch_time",)` | 刷新 no_target_time（防暂停后超时重置） |
+| `None` | 终止子进程 |
+
+### 结果协议（`result_queue`）
+
+- 成功：`("ok", {"remain_cards": dict[str, int], "zone_cards": dict[str, list[list[str]]]}, yolo_ms)`
+- 失败：`("error", str)`
+
+其中 `zone_cards` 的 key 为游戏配置中 `played_zones` 的 `key` 字段，value 为该区域的出牌记录。
+
+### 检测流水线
+
+`GameController.detect()` 执行以下五步：
+
+1. **截图**：`ScreenCapture.capture_window()` → `PIL.Image | None`
+2. **YOLO 纯视觉推理**：`YoloInferencer.detect(img)` → `(raw_result, yolo_ms)`
+3. **几何分区 + 二维排序**：`LayoutAnalyzer.parse_and_sort(raw_result, img.size)` → `dict[str, list[dict]]`
+4. **业务映射**：`Tracker.translate_boxes_to_cards(region_boxes)` → `dict[str, list[str]]`
+5. **状态机更新**：`Tracker.get_cards_number(frame_data, yolo_ms)` → `(remain_cards, show_cards, yolo_ms)`
+
+### 分区与排序
+
+- 分区依据检测框中心点是否落在 `window_layouts[*].layout` 区域内；区域坐标为归一化（0~1）
+- 区域键名从游戏配置的 `layout_regions` 动态获取
+- 排序不是置信度顺序：`LayoutAnalyzer.sort_cards_by_topright_rowwise()` 先按行（top-y 聚类）再按列（right-x 排序），避免出牌串顺序错乱
+
+### 多游戏支持
+
+- `BaseCardTracker`（`core/base_tracker.py`）为抽象基类
+- 子类在 `core/games/` 目录下（如 `DoudizhuTracker`）
+- 工厂函数 `create_tracker()` 根据 `TRACKER_REGISTRY` 动态创建
+- 新增游戏只需：① 在 `config/games/` 添加 YAML 配置 ② 在 `core/games/` 添加 Tracker 子类 ③ 在 `TRACKER_REGISTRY` 注册
 
 ## 3) 状态机约定（核心业务规则）
-- 状态常量在 `config/settings.py`：`WAIT_BEGIN` -> `HAS_STARTED` -> `STARTED_RECORD_CARD`。
-- `BaseCardTracker._presses_one_frame()` 以 `_get_validity_region()` 返回的区域是否为空作为"本帧是否有效"的门禁（空则直接丢弃）。子类实现 `_get_validity_region()` 指定判断区域（如斗地主用 `"landlord_cards"`）。
-- 连续帧确认由 `FRAME_LENGTH` 决定，`_check_card()` 要求缓存帧完全一致才算稳定。
-- 扣牌只在确认时发生：`_delete_played_cards()` 直接减少 `remain_cards`。
-- 为支持"连续两次出相同牌"，使用 `has_found_empty` 字典处理"不出牌空帧"过渡。
-- 超时重置规则：`get_cards_number()` 中若超过 `RESET_TIME` 未见有效目标则 `reset()`。
-- 子类通过实现 `should_start_game()`、`should_start_recording()`、`on_game_started()`、`on_start_recording()`、`process_played_cards()` 定制游戏特定逻辑。
 
-## 4) 配置与持久化模式（按现有方式改）
-- 所有设置写回都走 `config/settings.py` 的 `save_*` 函数，不要在别处直接改 YAML。
-- 写配置使用"临时文件 + `os.replace`"原子替换模式（见 `save_device_choice` 等函数）。
-- 修改布局时同时考虑：`config/config.yaml` 的 `window_layouts` + `current_layout`。
-- 设备切换（CPU/GPU）通过 ``switch_device`` 命令即时生效，子进程重建 YoloInferencer。
-- 游戏切换通过 ``switch_game`` 命令即时生效，子进程重载游戏配置并重建 Tracker。
-- 游戏配置文件位于 `config/games/` 目录，每个游戏一个 YAML 文件，包含：`total_cards`（牌组定义）、`played_zones`（出牌区域）、`layout_regions`（布局区域）。`yolo_to_card_mapping` 统一在 `config.yaml` 中管理，不同游戏共用。
-- `TOTAL_CARDS`、`PLAYED_ZONES`、`LAYOUT_REGIONS` 从游戏配置加载；`YOLO_TO_CARD_MAPPING` 从 `config.yaml` 加载。
+### 三阶段状态机
+
+状态常量在 `config/settings.py`：
+
+```
+WAIT_BEGIN (0) → HAS_STARTED (1) → STARTED_RECORD_CARD (2)
+                                       ↓ (超时无目标)
+                                    WAIT_BEGIN (0)
+```
+
+### 帧有效性门禁
+
+- `BaseCardTracker._presses_one_frame()` 以 `_get_validity_region()` 返回的区域是否为空作为"本帧是否有效"的门禁
+- 空则直接丢弃，不更新状态也不重置 `no_target_time`
+- 子类实现 `_get_validity_region()` 指定判断区域（斗地主用 `"landlord_cards"`）
+
+### 连续帧确认
+
+- 由 `FRAME_LENGTH` 决定，`_check_card()` 要求缓存帧长度达到阈值且所有帧完全一致才算稳定
+- 缓存长度超过 `FRAME_LENGTH` 时丢弃最旧帧
+
+### 扣牌规则
+
+- 扣牌只在确认时发生：`_delete_played_cards()` 直接减少 `remain_cards`
+- 为支持"连续两次出相同牌"，使用 `has_found_empty` 字典处理"不出牌空帧"过渡
+
+### 超时重置
+
+- `get_cards_number()` 中若超过 `RESET_TIME` 未见有效目标则 `reset()`
+
+### 子类必须实现的抽象方法
+
+| 方法 | 说明 |
+|------|------|
+| `_get_validity_region()` | 返回帧有效性判断区域键名 |
+| `should_start_game()` | 判断是否满足开始游戏条件 |
+| `should_start_recording()` | 判断是否满足开始记牌条件 |
+| `on_game_started()` | 游戏开始时的回调 |
+| `on_start_recording()` | 开始记牌时的回调 |
+| `process_played_cards(zone_key, cards)` | 处理确认的出牌 |
+
+### 斗地主特有逻辑（`DoudizhuTracker`）
+
+- 开始游戏条件：地主底牌连续帧稳定
+- 开始记牌条件：玩家手牌连续帧稳定；开始记牌时扣减手牌
+- 出牌处理：上家/下家出牌扣减剩余牌数；本家出牌仅记录不扣减（已在 `on_start_recording` 中扣减）
+
+## 4) 配置与持久化模式
+
+### 配置层级
+
+| 配置来源 | 文件/模块 | 说明 |
+|----------|-----------|------|
+| `config/config.yaml` | 运行时可编辑参数 | 用户可直接修改 |
+| `config/games/*.yaml` | 游戏配置 | 牌组、出牌区域、布局区域 |
+| `config/settings.py` | 运行时常量 + 加载/保存函数 | 不直接编辑 YAML |
+
+### 关键约定
+
+- 所有设置写回都走 `config/settings.py` 的 `save_*` 函数，不要在别处直接改 YAML
+- 写配置使用"临时文件 + `os.replace`"原子替换模式（见 `save_device_choice` 等函数）
+- `TOTAL_CARDS`、`PLAYED_ZONES`、`LAYOUT_REGIONS` 从游戏配置加载；`YOLO_TO_CARD_MAPPING` 从 `config.yaml` 加载
+- 设备切换通过 `switch_device` 命令即时生效，子进程重建 `YoloInferencer`
+- 游戏切换通过 `switch_game` 命令即时生效，子进程重载游戏配置并重建 `Tracker`
+- 模型切换通过 `switch_model` 命令即时生效，子进程重建 `YoloInferencer` + `Tracker`
+- 布局切换通过 `switch_layout` 命令即时生效，子进程重建 `LayoutAnalyzer` + `ScreenCapture` + `Tracker`
+
+### 资源目录解析
+
+- `BASE_DIR`：可写运行目录（项目根目录或 exe 所在目录）
+- `RESOURCE_DIR`：资源读取目录（兼容 PyInstaller 的 `_internal` 布局）
+- `_resolve_resource_dir()`：智能解析，支持打包后从 `_internal` 读取资源
+- `_ensure_runtime_config_exists()`：冻结环境下首次运行时复制配置到可写目录
 
 ## 5) UI 交互与进程边界
-- 推理在独立子进程中运行，不与 UI 主进程共享 GIL，拖动/缩放窗口不会卡顿。
-- `InferenceWorker` 是主进程中的 QObject，通过轮询定时器（20ms）从结果队列读取数据，以信号形式通知 UI。
-- 不要在子进程中操作任何 Qt 对象；子进程只能通过 `result_queue` 回传纯 Python 数据。
-- 调整窗口置顶使用 `setWindowFlag` 后，会调用 `_ensure_widgets_attached()` 修复可能丢失的控件挂载。
-- 出牌记录显示由 `_show_played_cards` 控制，并通过 `_update_played_cards_visibility()` 动态挂载/隐藏布局。
-- 出牌区域标签从游戏配置的 `played_zones` 动态生成，`played_cards_labels` 为 `dict[str, QLabel]`，key 为区域键名。
-- 样式依赖动态属性：`depleted` 与 `count`，更新后需 `unpolish/polish` 触发 QSS 刷新。
+
+### 进程隔离
+
+- 推理在独立子进程中运行，不与 UI 主进程共享 GIL
+- `InferenceWorker` 是主进程中的 `QObject`，通过轮询定时器（20ms）从结果队列读取数据，以信号形式通知 UI
+- **不要在子进程中操作任何 Qt 对象**；子进程只能通过 `result_queue` 回传纯 Python 数据
+
+### UI 更新机制
+
+- 定时触发：`CardUI.request_one_update()` 用 `QTimer` + `_busy` 防抖，每轮只允许一个后台任务
+- 增量刷新：通过 `_last_count_values` / `_last_depleted_values` / `_last_played_signature` 缓存，仅在状态变化时更新文本/样式
+- 样式依赖动态属性：`depleted` 与 `count`，更新后需 `unpolish/polish` 触发 QSS 刷新
+
+### 窗口置顶
+
+- 调整窗口置顶使用 `setWindowFlag` 后，会调用 `_ensure_widgets_attached()` 修复可能丢失的控件挂载
+- 设置对话框打开期间暂停定时器，关闭后调用 `_touch_no_target_time()` 防止立即超时重置
+
+### 出牌记录显示
+
+- 由 `_show_played_cards` 控制，通过 `_update_played_cards_visibility()` 动态挂载/隐藏布局
+- 出牌区域标签从游戏配置的 `played_zones` 动态生成
+- `played_cards_labels` 为 `dict[str, QLabel]`，key 为区域键名
 
 ## 6) 扩展工作流（布局/调试）
-- **可视化布局编辑（推荐）**：在主界面"设置"→"基本设置"页中点击"可视化编辑"，打开 `LayoutEditorDialog`。
-  - 选择目标窗口标题 → 点击"截图"（自动下沉本程序窗口避免遮挡）。
-  - 在画布上框选五个牌区：玩家手牌 / 本家出牌 / 上家出牌 / 下家出牌 / 地主底牌。
-  - 点击"预览校验"确认区域标注正确 → "保存"写入 `config.yaml`。
-  - 截图时窗口下沉/恢复通过上下文管理器 `_lowered_app_windows()` 保证资源安全释放。
-  - 保存后始终切换为当前布局；设置页面提供 ↻ 刷新按钮手动刷新布局列表。
-- 命令行工具（高级/调试用）：`utils/add_layout/list_windows.py` 找窗口标题、`draw_layout.py` 手动绘制区域。截图功能统一使用 `core/screen_capture.py`。
-- 运行主程序：`python main.py`。
 
-## 7) 调试截图资产约定（新增逻辑）
-- 统一由 `core/image_saver.py` 管理，不要在 `YoloInferencer`/`BaseCardTracker` 外部手写落盘逻辑。
-- 保存内容是"成对帧"：原始截图到 `games_images/row/`，YOLO 标注图到 `games_images/yolo/`，同局同帧同名。
-- 每局目录命名固定为 `game_N`（`game_1`, `game_2`, ...），帧命名固定为 `1.png` 递增。
-- 单局最多 `1000` 张；达到上限后该局后续帧不保存，并且仅打印一次提示（避免刷屏）。
-- 全局只保留最近 `3` 局；新局创建后会清理更旧目录。
-- **保存图片与调试模式分开控制**：`SAVE_DEBUG_IMAGES` 控制是否保存游戏图片，`DEBUG_MODE` 仅控制终端日志输出。
-- 启动时执行 `bootstrap(SAVE_DEBUG_IMAGES)`：扫描已有局号以续编。
+### 可视化布局编辑（推荐）
+
+在主界面"设置"→"基本设置"页中点击"可视化编辑"，打开 `LayoutEditorDialog`：
+
+1. 选择目标窗口标题
+2. 点击"截图"（自动下沉本程序窗口避免遮挡）
+3. 在画布上框选五个牌区：玩家手牌 / 本家出牌 / 上家出牌 / 下家出牌 / 地主底牌
+4. 点击"预览校验"确认区域标注正确
+5. "保存"写入 `config.yaml`
+
+截图时窗口下沉/恢复通过 `_send_app_windows_to_bottom()` / `_restore_app_windows_after_capture()` 保证资源安全释放。
+
+设置页面提供 ↻ 刷新按钮手动刷新布局列表，支持在布局下拉项中直接删除布局。
+
+### 命令行工具（高级/调试用）
+
+- `utils/add_layout/list_windows.py`：列出窗口标题
+- `utils/add_layout/draw_layout.py`：手动绘制区域
+
+### 运行主程序
+
+```bash
+python main.py
+```
+
+## 7) 调试截图资产约定
+
+- 统一由 `core/image_saver.py` 管理，不要在 `YoloInferencer` / `BaseCardTracker` 外部手写落盘逻辑
+- 保存内容是"成对帧"：原始截图到 `games_images/row/`，YOLO 标注图到 `games_images/yolo/`，同局同帧同名
+- 每局目录命名固定为 `game_N`（`game_1`, `game_2`, ...），帧命名固定为 `1.png` 递增
+- 单局最多 `1000` 张；达到上限后该局后续帧不保存，并且仅打印一次提示
+- 全局只保留最近 `3` 局；新局创建后会清理更旧目录
+- **保存图片与调试模式分开控制**：`SAVE_DEBUG_IMAGES` 控制是否保存游戏图片，`DEBUG_MODE` 仅控制终端日志输出
+- `ImageSaver` 由 `GameController` 统一管理，传入 `YoloInferencer` 和 `Tracker` 子类
+- 运行时热切换：`GameController.update_settings()` 中通过 `set_enabled()` 切换保存开关，不需要重建 `ImageSaver` 实例
+- 启动时执行 `ImageSaver.bootstrap_static(BASE_DIR, SAVE_DEBUG_IMAGES)` 初始化目录
 
 ## 8) 耗时统计约定
-- YOLO 推理耗时：仅包含 `self.model(...)` 调用，不含截图和保存图片时间；在 `YoloInferencer.detect()` 中用 `time.perf_counter()` 计时。
-- 整轮耗时：从 `request_one_update()` 发出检测请求到 `on_result_ready()` 收到结果，包含截图+推理+队列通信+轮询延迟。
-- 标题栏显示格式：`Han记牌器 · 推理 XXms · 整轮 XXms`，由 `SHOW_TIMING` 配置项控制是否显示。
+
+- **YOLO 推理耗时**：仅包含 `self.model(...)` 调用，不含截图和保存图片时间；在 `YoloInferencer.detect()` 中用 `time.perf_counter()` 计时
+- **整轮耗时**：从 `request_one_update()` 发出检测请求到 `on_result_ready()` 收到结果，包含截图+推理+队列通信+轮询延迟
+- 标题栏显示格式：`Han记牌器  ·  推理 XXms  ·  整轮 XXms`，由 `SHOW_TIMING` 配置项控制是否显示
 
 ## 9) 环境与集成边界
 
-- 当前实现依赖 Windows 截图链路（`win32gui/win32ui/win32con` + DPI aware），默认是 Windows 场景。
-- YOLO 推理在独立子进程中运行（`multiprocessing`），主进程（UI）与子进程不共享 GIL；`main.py` 必须调用 `multiprocessing.freeze_support()` 以支持 PyInstaller 打包。
-- YOLO 权重在 `yolo/weights/` 目录下的子目录中（如 `yolo/weights/yolov11n_imgsz_960/best.pt`），不支持直接放在 `weights/` 下；通过设置界面切换模型。
-- 关键三方：`ultralytics`、`torch`、`PySide6`、`opencv-python`、`PyYAML`、`pillow`。
-- 本仓库未提供自动化测试；回归验证以真实窗口识别 + UI行为检查为主。
+- 当前实现依赖 Windows 截图链路（`win32gui/win32ui/win32con` + DPI Aware），默认是 Windows 场景
+- YOLO 推理在独立子进程中运行（`multiprocessing`），主进程（UI）与子进程不共享 GIL；`main.py` 必须调用 `multiprocessing.freeze_support()` 以支持 PyInstaller 打包
+- YOLO 权重在 `yolo/weights/` 目录下的子目录中（如 `yolo/weights/yolov11s_imgsz_960/best.pt`），不支持直接放在 `weights/` 下；通过设置界面切换模型
+- 模型加载策略：
+  - GPU（`device_choice == "cuda"`）：TensorRT（FP16）> PyTorch CUDA + FP16
+  - CPU（`device_choice == "cpu"`）：ONNX Runtime > PyTorch CPU
+  - ONNX / TensorRT 引擎在首次使用时自动从 `best.pt` 导出
+- 关键三方：`ultralytics`、`torch`、`PySide6`、`opencv-python`、`PyYAML`、`pillow`
+- 本仓库未提供自动化测试；回归验证以真实窗口识别 + UI 行为检查为主
